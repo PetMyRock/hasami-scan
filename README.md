@@ -196,8 +196,11 @@ and `discovery` to find network scanners).
 
 ## Licence
 
-Copyright (C) 2026 PetMyRock.
+Copyright (c) 2026 PetMyRock.
 
-Hasami Scan is free software under the GNU General Public License, version 3
-or later (see `LICENSE`). It uses PySide6/Qt (LGPL-3.0), OpenCV (Apache-2.0),
+Hasami Scan is released under the **MIT License** (see `LICENSE`): use,
+change, share or sell it, for any purpose, as long as the copyright notice and
+the licence text stay with it.
+
+The libraries it uses keep their own licences: PySide6/Qt (LGPL-3.0), OpenCV (Apache-2.0),
 NumPy and Pillow; their licence texts ship with the installer.

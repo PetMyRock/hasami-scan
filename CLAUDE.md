@@ -3,7 +3,7 @@
 A VueScan-style scanning app (Python, PySide6) whose selling point is better
 auto-crop, for anime material: artbooks, Blu-ray/DVD booklets, prints,
 shikishi, trading cards (not manga). Windows first (TWAIN/WIA); SANE and eSCL
-also work. Licence GPL-3.0-or-later. Python package `hasami`, distribution
+also work. Licence MIT (GPL-3.0 until 0.5.2). Python package `hasami`, distribution
 `hasami-scan`, commands `hasami` (CLI) and `hasami-scan` (GUI).
 
 ## Working rules
@@ -118,7 +118,8 @@ also work. Licence GPL-3.0-or-later. Python package `hasami`, distribution
 `packaging/build.py --python32 <32-bit Python with pytwain + pyinstaller>`:
 icon (`make_icon.py`) -> PyInstaller `hasami.spec` (onedir: `HasamiScan.exe`
 window + `hasami.exe` console) -> `twain_helper.spec` for 32 and 64-bit ->
-licence texts (`licenses\`, incl. the LGPL-3.0 notice for Qt) -> Inno Setup
+licence texts (`licenses\`: the app's MIT licence, the libraries' texts, the LGPL-3.0 notice for Qt
++ `packaging/licenses/GPL-3.0.txt`, which the LGPL builds on) -> Inno Setup
 `installer.iss` (per-user, `%LOCALAPPDATA%\Programs\Hasami Scan`, no admin) ->
 `dist\HasamiScanSetup-<v>.exe`. CI: a `v*` tag builds it and attaches it to a
 release (tag must equal the version). In Git Bash, iscc's `/D` arguments need
