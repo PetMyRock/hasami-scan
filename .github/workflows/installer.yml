@@ -17,17 +17,17 @@ jobs:
   build:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: 32-bit Python (TWAIN helper for 32-bit drivers)
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         id: py32
         with:
           python-version: "3.13"
           architecture: x86
 
       - name: 64-bit Python (the app)
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         id: py64
         with:
           python-version: "3.13"
@@ -68,7 +68,7 @@ jobs:
           dist\HasamiScan\twain32\twain_helper32.exe
           dist\HasamiScan\twain64\twain_helper64.exe
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: HasamiScanSetup
           path: dist/HasamiScanSetup-*.exe
