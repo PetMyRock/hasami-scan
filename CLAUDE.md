@@ -137,7 +137,7 @@ new" links the release page. Releases must keep attaching
 `HasamiScanSetup-<v>.exe` (the CI does).
 
 ## Per-scanner tuning
-Users ask for tuning on the Discord server and share scans (an empty bed and
+Users ask for tuning on the Discord server (https://discord.gg/TAAV8B9WWg) and share scans (an empty bed and
 real items). Truth is marked by eye at full resolution (5 points per side),
 stored with the scans in the private data repo; auto-crop is tuned until the
 scans pass (count right and IoU >= 0.95), checking the other tuned scanners
