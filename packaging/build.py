@@ -81,7 +81,8 @@ def licence_files(dist_name: str, python: str | None = None) -> list[tuple[str, 
 def write_licences(python32: str | None) -> None:
     folder = APP / "licenses"
     folder.mkdir(parents=True, exist_ok=True)
-    shutil.copy(ROOT / "LICENSE", folder / "HasamiScan-GPL-3.0.txt")
+    shutil.copy(ROOT / "LICENSE", folder / "HasamiScan-MIT.txt")
+    shutil.copy(HERE / "licenses" / "GPL-3.0.txt", folder / "GPL-3.0.txt")  # the LGPL (Qt) builds on it
     py_lic = Path(sys.base_prefix) / "LICENSE.txt"
     if py_lic.is_file():
         shutil.copy(py_lic, folder / "Python.txt")
@@ -110,7 +111,7 @@ unchanged as separate files (the PySide6 and shiboken6 folders in _internal)
 and may be replaced with other builds of the same version.  Source code:
 https://code.qt.io/ and https://download.qt.io/official_releases/QtForPython/
 The LGPL-3.0 adds to the GNU General Public License version 3
-(HasamiScan-GPL-3.0.txt in this folder).
+(GPL-3.0.txt in this folder).
 
 """
 
