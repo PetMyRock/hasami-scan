@@ -25,6 +25,9 @@ trading cards.
 > scanners and real scans. Review it as you would any other code before
 > relying on it.
 
+Questions, problems or scanner tuning requests:
+[Discord](https://discord.gg/TAAV8B9WWg) or GitHub issues.
+
 ## Install (Windows)
 
 1. Install your scanner's own driver first, for example Epson Scan from your
@@ -63,8 +66,8 @@ separately.
 | Epson Perfection V39 | Tuned on older scans (black bed and light lid). |
 | Other scanners | They work, but auto-crop is not tuned for them yet. |
 
-**Want your scanner tuned?** Ask on the project's Discord server *(link
-coming soon)*. You send a few scans (an empty bed, and items you actually
+**Want your scanner tuned?** Ask on the project's
+[Discord server](https://discord.gg/TAAV8B9WWg). You send a few scans (an empty bed, and items you actually
 scan), the crops are checked by hand and auto-crop is tuned against them.
 Scans are used only for testing and are never published.
 
