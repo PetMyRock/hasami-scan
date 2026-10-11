@@ -122,7 +122,19 @@ licence texts (`licenses\`, incl. the LGPL-3.0 notice for Qt) -> Inno Setup
 `installer.iss` (per-user, `%LOCALAPPDATA%\Programs\Hasami Scan`, no admin) ->
 `dist\HasamiScanSetup-<v>.exe`. CI: a `v*` tag builds it and attaches it to a
 release (tag must equal the version). In Git Bash, iscc's `/D` arguments need
-`MSYS_NO_PATHCONV=1`. Not done: code signing; update check.
+`MSYS_NO_PATHCONV=1`. Not done: code signing.
+
+## Update check (0.5.1)
+`hasami/updates.py`: GitHub API `repos/PetMyRock/hasami-scan/releases/latest`
+(urllib, 10 s timeout) -> `Release(version, page, installer)`; `is_newer`
+compares numeric versions; `due()` = `updates.check_on_start` and 24 h since
+`updates.last_check`; `should_offer` skips `updates.skipped` on start only.
+GUI: automatic check only in the installed (frozen) app, in the background,
+silent on errors; Help > Check for updates (always, reports errors / "latest")
+and the checkable "Check for updates on start". Dialog: Download (opens the
+installer link, else the release page) / Skip this version / Later; "What's
+new" links the release page. Releases must keep attaching
+`HasamiScanSetup-<v>.exe` (the CI does).
 
 ## Per-scanner tuning
 Users ask for tuning on the Discord server and share scans (an empty bed and
@@ -134,7 +146,7 @@ name, with a drop-down to override. Tuned so far: Epson Perfection V600 (57
 scans + 26 thick-book spreads, all pass), Epson V39 (older scans).
 
 ## Ideas not done yet
-- Update check on start (GitHub releases), code signing.
+- Code signing (unsigned installers show SmartScreen's warning).
 - Synthetic horizontal booklets: a blank page margin at the image edge is taken
   for lid shadow (known xfail in `tests/test_booklet.py`).
 - Dark paper with a lighter page-stack band keeps the band.
