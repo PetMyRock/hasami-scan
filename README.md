@@ -19,6 +19,8 @@ trading cards.
   appears strip by strip as the scanner moves. There is a raw-file option, and
   turning the preview turns every saved scan.
 
+![Hasami Scan cropping an open artbook: both pages as one image, then each page on its own](docs/demo.gif)
+
 > **AI disclosure:** Hasami Scan was created with the help of AI. Most of
 > the code, tests and documentation were written by Anthropic's Claude
 > (through Claude Code), directed by the maintainer and tested on real
