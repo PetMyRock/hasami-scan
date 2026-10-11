@@ -1,0 +1,141 @@
+# Hasami Scan — project notes
+
+A VueScan-style scanning app (Python, PySide6) whose selling point is better
+auto-crop, for anime material: artbooks, Blu-ray/DVD booklets, prints,
+shikishi, trading cards (not manga). Windows first (TWAIN/WIA); SANE and eSCL
+also work. Licence GPL-3.0-or-later. Python package `hasami`, distribution
+`hasami-scan`, commands `hasami` (CLI) and `hasami-scan` (GUI).
+
+## Working rules
+- Branch from `main`, open a PR; the maintainer merges. Bump the version
+  (`hasami/__init__.py` + `pyproject.toml`) with each merged feature: the
+  window title shows it.
+- Tests: `python -m pytest -q` (~3 min; `tests/conftest.py` sets Qt offscreen
+  and a temporary APPDATA/XDG config). Run `benchmarks/synthetic_*.py` after
+  any change to the crop engine and report the numbers.
+- NEVER run the GUI (`MainWindow`) from an ad-hoc script with the real
+  APPDATA: it saves its settings on close and overwrites the user's. Set
+  `APPDATA` (and `XDG_CONFIG_HOME`) to a temporary folder first.
+- Ask before a real scan on someone's scanner (item on the glass, lid down).
+- **Real scans and their ground truth are private** (copyrighted artbooks;
+  users' scans are shared for testing only). They live in the private data
+  repo, never in this repo. Tests here use generated scans only.
+- Auto-crop changes: accuracy on the real scans of the tuned scanners comes
+  first; synthetic results may drop a little for it (report them anyway).
+  Keep booklet logic separate so it cannot degrade multi/single.
+
+## Layout
+- `hasami/core/autocrop.py`: detection engine (modes multi / single / booklet
+  / off). `_working_image` -> `_coarse_detect` (lid model `_analyze`, fg mask,
+  split touching, `fit_rectangle`, `_find_borders` white-border search) ->
+  `_finish` (scale up, `_refine_edges` sub-pixel edges, deskew, margin).
+  `refine()` re-refines preview boxes on the full-resolution scan (respects
+  `box.meta["keep_sides"]`, skips manual boxes). `DARK_FLOOR=12` (Lab L below
+  it counts as black). `_edge_falloff`: light lids darken towards the glass
+  edges; measured inwards from each image edge and flattened first.
+- `hasami/core/booklet.py`: booklet mode (only pages fully on the glass, outer
+  edge to spine). Orientation (`_spine_across`) -> visible booklet
+  (`_visible_booklet`: `_resquare`, `_trim_protrusions`,
+  `_shrink_to_paper_edges` for lid shadows when a thick booklet props the lid)
+  -> `_cut_sides` (touch / `_edge_reach`) -> `_find_spine` (cues: outline breaks
+  weight 8/mm, gutter shading, seam, crease, text gap) -> pages -> `_top_pages`
+  -> thick-book fit -> spread / page order. `booklet.DEBUG` collects profiles.
+- `hasami/core/toppage.py`: crops end at the TOP page's printed edge (page-stack
+  bands and cover boards excluded). Per side a strip cut into 16 segments,
+  Lab-gradient peaks, Hough vote for layer lines (support >= 60%), chain from
+  the outermost line inwards (gaps <= 1.0 mm always, <= 2.2 mm when the band
+  looks like paper or the stack continues, <= 6 mm when 2-15 L darker than
+  light paper). Spine sides snap to the fold's crease (3 mm; 1 mm for "shade"
+  spines).
+- `hasami/core/thickbook.py`: `fit_spread` for thick books on a light lid
+  (black bed -> None); robust per-page lines, validation (inliers >= 0.5, rms
+  <= 0.6 mm, pages >= 2 mm from the border); wins when it answers.
+- Booklet options: `crop.booklet_output` "pages" | "spread" (union of both
+  pages), `crop.booklet_rtl` (right page first, as seen after `crop.rotate`).
+- `hasami/core/geometry.py` (CropBox: angle in (-45, 45], positive = clockwise
+  on screen), `processing.py` (levels, WB, negatives, descreen, dust, sharpen),
+  `output.py` (JPEG/PNG/TIFF 8/16-bit, WebP, PDF, raw TIFFs).
+- `hasami/devices/`: `twain_backend.py` + `twain_helper.py` (helper process,
+  see TWAIN), `wia_backend.py`, `escl_backend.py`, `sane_backend.py`,
+  `file_backend.py`, `demo_backend.py` (synthetic beds, tests only: hidden in
+  the GUI, `hasami list --all`), `choose.py` (best connection first; hides
+  VueScan's TWAIN source, the WIA-to-TWAIN bridge and WIA twins unless
+  `input.show_all_devices`; two TWAIN drivers with one name -> the 32-bit one
+  first, e.g. the old EPSON Scan before Epson Scan 2).
+- `hasami/workflow.py` (Session: preview -> boxes in bed mm -> scan the crop
+  area -> refine -> process -> save; `input.device` "" = best scanner),
+  `cli.py`, `gui/` (`app.py`, `preview.py`, `settings_panel.py`, `worker.py`).
+- `hasami/settings.py`: JSON in `%APPDATA%\HasamiScan` (macOS
+  `~/Library/Application Support/HasamiScan`, Linux `~/.config/hasami-scan`);
+  copies settings once from the old `scanner` folder (the app was called
+  "Scanner" before 0.4.2).
+- `hasami/demo.py`, `demo_anime.py`: synthetic generators with ground truth.
+- `packaging/`: Windows installer (see Installer). `.github/workflows/installer.yml`.
+
+## TWAIN (Windows)
+- `twain_helper.py` is a standalone script (stdlib + `pytwain==2.3.0`), one JSON
+  request per run, one JSON line back. Many drivers are 32-bit only (e.g. the
+  old EPSON Scan), so it runs in a 32-bit process: dev runs use a 32-bit Python
+  found through `py -0p` (or `input.twain_python`); the installed app ships
+  `twain32\twain_helper32.exe` and `twain64\twain_helper64.exe` (frozen ->
+  `bundled_helpers()`; `helper_command` passes the request as the only arg).
+- Device ids: `twain:<name>`, `twain:<name> [<family>]` for a second driver of
+  the same name (opened by identity).
+- Scan setup: transfer chosen BEFORE area/resolution (native transfers are
+  limited to ~400 MiB in a 32-bit process; a refused resolution switches to a
+  file transfer); frame set before and after the resolution; auto-size/border
+  detection/paper sizes switched off; raw -> brightness/contrast 0.
+  `probe_dpi` finds resolutions above the listed max (they depend on the area).
+- Live view: memory transfer (own ctypes structs), strips written to
+  `<out>.raw`, read by `RawStrips` while the helper runs.
+- Cancel must be graceful: killing the helper mid-transfer hung an Epson V600
+  until its power cable was pulled. A cancel file asks the helper to end the
+  transfer the TWAIN way (MSG_ENDXFER / MSG_RESET / WM_QUIT, close source and
+  DSM); `<cancel>.busy` while inside a driver call; kill only after 15 s not
+  busy or 600 s in all (then a warning with recovery advice).
+- The helper's answer goes to temp files, not pipes (a big answer deadlocked).
+- Driver window ("TWAIN: show the scanner's own window"): after such a scan the
+  helper reads the driver's custom caps (>= 0x8000) and later hidden-window
+  scans replay them (`twain_driver_settings.json`).
+- TWAIN ProductName stays "Scanner" (drivers may keep settings per program).
+- The fake driver in `tests/fake_twain` models TWAIN states, devices, limits
+  (`FAKE_TWAIN_*` environment variables).
+- Epson notes: the old EPSON Scan applies its saved "Current Setting" (e.g.
+  No Color Correction) to hidden-window scans. WIA on the V600: odd motor
+  pitch, no live view, max 1200 dpi -> always prefer TWAIN.
+
+## GUI notes
+- VueScan's workflow and look: Preview / Scan, crop boxes (drag edges anywhere
+  within 6 px, corners, inside; rotate handle; Skew field with arrow keys),
+  rotate buttons at the bottom right turn the whole preview and set
+  `crop.rotate` for saved scans, Cropped area tab, live view (grey placeholder
+  filled strip by strip; one crop box -> shown straightened). Do NOT darken the
+  preview outside the crop box.
+- Qt `clicked` passes a `checked` bool: slots with default args take `*_` first.
+- Empty preview: `START_HINT`, or `NO_SCANNER` when nothing is found.
+
+## Installer
+`packaging/build.py --python32 <32-bit Python with pytwain + pyinstaller>`:
+icon (`make_icon.py`) -> PyInstaller `hasami.spec` (onedir: `HasamiScan.exe`
+window + `hasami.exe` console) -> `twain_helper.spec` for 32 and 64-bit ->
+licence texts (`licenses\`, incl. the LGPL-3.0 notice for Qt) -> Inno Setup
+`installer.iss` (per-user, `%LOCALAPPDATA%\Programs\Hasami Scan`, no admin) ->
+`dist\HasamiScanSetup-<v>.exe`. CI: a `v*` tag builds it and attaches it to a
+release (tag must equal the version). In Git Bash, iscc's `/D` arguments need
+`MSYS_NO_PATHCONV=1`. Not done: code signing; update check.
+
+## Per-scanner tuning
+Users ask for tuning on the Discord server and share scans (an empty bed and
+real items). Truth is marked by eye at full resolution (5 points per side),
+stored with the scans in the private data repo; auto-crop is tuned until the
+scans pass (count right and IoU >= 0.95), checking the other tuned scanners
+do not get worse. Plan: per-scanner profiles picked from the driver's model
+name, with a drop-down to override. Tuned so far: Epson Perfection V600 (57
+scans + 26 thick-book spreads, all pass), Epson V39 (older scans).
+
+## Ideas not done yet
+- Update check on start (GitHub releases), code signing.
+- Synthetic horizontal booklets: a blank page margin at the image edge is taken
+  for lid shadow (known xfail in `tests/test_booklet.py`).
+- Dark paper with a lighter page-stack band keeps the band.
+- White paper running off a white lid with a blank strip at the border.

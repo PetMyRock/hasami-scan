@@ -1,0 +1,84 @@
+# Builds the Windows installer (packaging/build.py).
+# - Push a version tag (git tag v0.3.16 && git push origin v0.3.16): builds it and
+#   attaches HasamiScanSetup-<version>.exe to a GitHub Release of that tag.
+# - "Run workflow" on the Actions tab: builds it and keeps it as a downloadable
+#   artifact of the run (no release).
+name: Windows installer
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write  # create the release
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 32-bit Python (TWAIN helper for 32-bit drivers)
+        uses: actions/setup-python@v5
+        id: py32
+        with:
+          python-version: "3.13"
+          architecture: x86
+
+      - name: 64-bit Python (the app)
+        uses: actions/setup-python@v5
+        id: py64
+        with:
+          python-version: "3.13"
+          architecture: x64
+
+      - name: Install
+        shell: pwsh
+        run: |
+          & "${{ steps.py32.outputs.python-path }}" -m pip install --upgrade pip
+          & "${{ steps.py32.outputs.python-path }}" -m pip install pytwain==2.3.0 pyinstaller==6.22.3
+          python -m pip install --upgrade pip
+          python -m pip install ".[gui,wia,twain,discovery]" pyinstaller==6.22.3
+
+      - name: Version tag matches the app
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        run: |
+          $v = python -I -c "import hasami; print(hasami.__version__)"
+          if ("v$v" -ne "${{ github.ref_name }}") { throw "tag ${{ github.ref_name }} but the app is $v" }
+
+      - name: Inno Setup
+        shell: pwsh
+        run: |
+          if (-not (Get-Command iscc -ErrorAction SilentlyContinue) -and
+              -not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) {
+            choco install innosetup -y --no-progress
+          }
+
+      - name: Build
+        shell: pwsh
+        run: python packaging/build.py --python32 "${{ steps.py32.outputs.python-path }}"
+
+      - name: Smoke test
+        shell: pwsh
+        run: |
+          dist\HasamiScan\hasami.exe --version
+          # No argument = list the TWAIN sources (none on the build machine; it must answer).
+          dist\HasamiScan\twain32\twain_helper32.exe
+          dist\HasamiScan\twain64\twain_helper64.exe
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: HasamiScanSetup
+          path: dist/HasamiScanSetup-*.exe
+          if-no-files-found: error
+
+      - name: Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $exe = Get-ChildItem dist\HasamiScanSetup-*.exe | Select-Object -First 1
+          gh release create "${{ github.ref_name }}" $exe.FullName --title "Hasami Scan ${{ github.ref_name }}" --generate-notes

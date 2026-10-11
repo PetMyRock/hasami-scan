@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=77", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hasami-scan"
+version = "0.5.0"
+description = "Hasami Scan: a VueScan-style scanning app with smarter auto-crop (multi-photo, white borders, deskew, booklets)."
+readme = "README.md"
+requires-python = ">=3.10"
+license = "GPL-3.0-or-later"
+license-files = ["LICENSE"]
+dependencies = [
+    "numpy>=1.24",
+    "opencv-python-headless>=4.8",
+    "Pillow>=10.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/PetMyRock/hasami-scan"
+
+[project.optional-dependencies]
+gui = ["PySide6-Essentials>=6.5"]
+sane = ["python-sane>=2.9"]
+wia = ["pywin32>=306; sys_platform == 'win32'"]
+twain = ["pytwain==2.3.0; sys_platform == 'win32'"]
+discovery = ["zeroconf>=0.100"]
+dev = ["pytest>=7"]
+all = ["hasami-scan[gui,sane,discovery,twain]", "pywin32>=306; sys_platform == 'win32'"]
+
+[project.scripts]
+hasami = "hasami.cli:main"
+
+[project.gui-scripts]
+hasami-scan = "hasami.gui.app:main"
+
+[tool.setuptools.packages.find]
+include = ["hasami*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
