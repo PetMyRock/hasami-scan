@@ -101,6 +101,22 @@ class Session:
         self.device = None
         self.device_id = ""
 
+    # ------------------------------------------------------------- profile
+    def profile(self):
+        """The scanner profile auto-crop uses: the one chosen in the Crop tab, or with "auto" the
+        one matching the open scanner (default when none matches or no scanner is open)."""
+        from .core import profiles
+
+        name = self.settings.crop.profile
+        if name and name != "auto":
+            return profiles.get(name)
+        info = self.device.info if self.device is not None else None
+        return profiles.for_scanner(info.name, info.vendor, info.model) if info else profiles.DEFAULT
+
+    def crop_settings(self):
+        """The crop settings with the profile resolved (what detect / refine get)."""
+        return replace(self.settings.crop, profile=self.profile().name)
+
     # ------------------------------------------------------------- preview
     def run_preview(self, progress: ProgressFn | None = None,
                     cancel: threading.Event | None = None) -> ScanResult:
@@ -116,7 +132,7 @@ class Session:
         if self.preview is None:
             return []
         p = self.preview
-        found = autocrop.detect(p.image, self.settings.crop, dpi=p.dpi)
+        found = autocrop.detect(p.image, self.crop_settings(), dpi=p.dpi)
         origin = (p.area_mm[0], p.area_mm[1])
         manual = [b for b in self.boxes_mm if b.manual]
         self.boxes_mm = manual + [box_px_to_mm(b, p.dpi, origin) for b in found]
@@ -184,9 +200,9 @@ class Session:
                 origin = (result.area_mm[0], result.area_mm[1])
                 boxes = [box_mm_to_px(b, result.dpi, origin) for b in crops]
                 if st.crop.edge_refine:
-                    boxes = autocrop.refine(result.image, boxes, st.crop, dpi=result.dpi)
+                    boxes = autocrop.refine(result.image, boxes, self.crop_settings(), dpi=result.dpi)
             else:
-                boxes = autocrop.detect(result.image, st.crop, dpi=result.dpi)
+                boxes = autocrop.detect(result.image, self.crop_settings(), dpi=result.dpi)
             outcomes.append(self._finish(result, boxes, save, status))
             if cancel is not None and cancel.is_set():
                 break
@@ -197,7 +213,7 @@ class Session:
         """Auto-crop, process and save an image that is already scanned."""
         result = ScanResult(image, dpi, (0.0, 0.0, image.shape[1] / dpi * MM_PER_INCH,
                                          image.shape[0] / dpi * MM_PER_INCH))
-        boxes = autocrop.detect(image, self.settings.crop, dpi=dpi)
+        boxes = autocrop.detect(image, self.crop_settings(), dpi=dpi)
         return self._finish(result, boxes, save, status)
 
     def _finish(self, result: ScanResult, boxes: list[CropBox], save: bool,

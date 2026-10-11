@@ -136,6 +136,25 @@ installer link, else the release page) / Skip this version / Later; "What's
 new" links the release page. Releases must keep attaching
 `HasamiScanSetup-<v>.exe` (the CI does).
 
+## Scanner profiles (0.5.2)
+`hasami/core/profiles.py`: frozen `Profile` dataclass = the tuned numbers and
+switches (lid `dark_floor_l`; booklet `shrink_to_paper_edges` (V600 propped
+lid), `shrink_margin`, `outline_weight`, `spread_confidence`, `middle_window`,
+`cover_split_score`, `lid_all_round_split_score`; all of toppage's numbers;
+thickbook `thick_books` + its validation limits). `PROFILES`: "default" and
+"epson-v600" (match `perfection\s*v600`, `gt-x820`), identical values at the
+start. Active profile = a ContextVar: `autocrop.detect` / `refine` wrap the
+engine in `profiles.use(settings.profile)`; engine code reads
+`profiles.current()` (toppage via `_profile()`). `crop.profile` "auto" =
+`Session.profile()` matches the open scanner's name/vendor/model (else
+default); `Session.crop_settings()` passes the resolved name. GUI: Crop tab
+"Scanner profile" (Automatic / each profile), status bar shows
+"[profile: ...]"; CLI `--profile`. Tuning a new scanner: add a profile (and a
+switch for new behaviour, default off for the others), never change another
+profile's values; still run the real-scan benchmarks of all tuned scanners
+(shared code). More inline numbers can move into `Profile` as tuning needs
+them (keep the old value as the default so nothing changes).
+
 ## Per-scanner tuning
 Users ask for tuning on the Discord server (https://discord.gg/TAAV8B9WWg) and share scans (an empty bed and
 real items). Truth is marked by eye at full resolution (5 points per side),

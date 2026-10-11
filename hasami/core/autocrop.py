@@ -36,11 +36,11 @@ from dataclasses import dataclass, replace
 import cv2
 import numpy as np
 
+from . import profiles
 from .geometry import CropBox, reading_order
 
 MM_PER_INCH = 25.4
 #: Lab lightness below which tones are treated as black (see ``_analyze``).
-DARK_FLOOR = 12.0
 
 
 @dataclass
@@ -77,6 +77,9 @@ class AutoCropSettings:
     work_size: int = 1000
     #: Assumed resolution when the caller does not know it.
     default_dpi: float = 300.0
+    #: Scanner profile (tuned numbers per scanner model, see ``profiles``): a profile name,
+    #: or "auto" = the profile matching the scanner (the app resolves it; default otherwise).
+    profile: str = "auto"
     #: Booklet mode: end each page at the top page's edge (page-stack bands
     #: and cover boards left out), see ``toppage``.
     top_page: bool = True
@@ -271,10 +274,11 @@ def _analyze(rgb: np.ndarray, sensitivity: float, band_frac: float = 0.03,
     lab = cv2.cvtColor(rgb, cv2.COLOR_RGB2Lab)
     # Lightness exaggerates differences between very dark tones, so on a
     # black background fabric texture or a faint light leak would look like
-    # an item.  Everything darker than DARK_FLOOR counts as equally black, and
+    # an item.  Everything darker than the profile's dark_floor_l counts as equally black, and
     # colour differences fade out in deep shadow.
-    shadow = np.clip(lab[:, :, 0] / DARK_FLOOR, 0.0, 1.0)
-    lab[:, :, 0] = np.maximum(lab[:, :, 0], DARK_FLOOR)
+    dark_floor = profiles.current().dark_floor_l
+    shadow = np.clip(lab[:, :, 0] / dark_floor, 0.0, 1.0)
+    lab[:, :, 0] = np.maximum(lab[:, :, 0], dark_floor)
     lab[:, :, 1] *= shadow
     lab[:, :, 2] *= shadow
     # Flatten the lid's darkening towards the edges of the glass first, so
@@ -1081,9 +1085,15 @@ def detect(image: np.ndarray, settings: AutoCropSettings | None = None, dpi: flo
     """Detect crop boxes on a scan.
 
     ``image`` may be 8/16-bit or float, grey or RGB.  Returned boxes are in
-    the image's pixel coordinates, in reading order.
+    the image's pixel coordinates, in reading order.  The scanner profile
+    ``settings.profile`` is active while it runs.
     """
     st = settings or AutoCropSettings()
+    with profiles.use(st.profile):
+        return _detect(image, st, dpi)
+
+
+def _detect(image: np.ndarray, st: AutoCropSettings, dpi: float | None) -> list[CropBox]:
     H, W = image.shape[:2]
     full = CropBox.from_xywh(0, 0, W, H, confidence=0.0)
     if st.mode == "off":
@@ -1115,6 +1125,12 @@ def refine(image: np.ndarray, boxes: list[CropBox], settings: AutoCropSettings |
     ``meta["keep_sides"]`` (a booklet page's spine) are not moved.
     """
     st = settings or AutoCropSettings()
+    with profiles.use(st.profile):
+        return _refine(image, boxes, st, dpi, radius)
+
+
+def _refine(image: np.ndarray, boxes: list[CropBox], st: AutoCropSettings, dpi: float | None,
+            radius: float | None) -> list[CropBox]:
     dpi = dpi or st.default_dpi
     H, W = image.shape[:2]
     L = luminance(image)

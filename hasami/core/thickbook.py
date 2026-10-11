@@ -29,6 +29,7 @@ import math
 import cv2
 import numpy as np
 
+from . import profiles
 from .geometry import CropBox
 
 MM_PER_INCH = 25.4
@@ -128,6 +129,7 @@ def _page_box(top, bottom, outer, spine) -> CropBox:
 
 def fit_spread(image: np.ndarray, dpi: float, debug: dict | None = None) -> list[CropBox] | None:
     """The two pages of a whole spread, each to its top page's edges, or None."""
+    tuned = profiles.current()  # the scanner profile
     H, W = image.shape[:2]
     s = min(1.0, WORK_DPI / float(dpi))
     small = cv2.resize(image, None, fx=s, fy=s, interpolation=cv2.INTER_AREA) if s < 1 else image
@@ -228,7 +230,7 @@ def fit_spread(image: np.ndarray, dpi: float, debug: dict | None = None) -> list
         if lines["outer"] is None:
             return fail(f"page {side}: no straight outer edge")
         for k, ln in lines.items():
-            if ln[2] < 0.5 or ln[3] > 0.6 * mm:
+            if ln[2] < tuned.thick_inliers or ln[3] > tuned.thick_rms_mm * mm:
                 return fail(f"page {side} {k}: ragged (inliers {ln[2]:.2f}, rms {ln[3] / mm:.2f} mm)")
         box = _page_box(lines["top"], lines["bottom"], lines["outer"], spine)
         # Outside the page there must be something clearly darker (lid, stack, board).
@@ -237,15 +239,15 @@ def fit_spread(image: np.ndarray, dpi: float, debug: dict | None = None) -> list
             debug[side] = {k: v for k, v in lines.items()}
 
     (bl, _), (br, _) = pages
-    if abs(bl.h - br.h) > 0.03 * max(bl.h, br.h):
+    if abs(bl.h - br.h) > tuned.thick_height_tol * max(bl.h, br.h):
         return fail(f"page heights differ ({bl.h:.0f} vs {br.h:.0f})")
-    if abs(bl.w - br.w) > 0.15 * max(bl.w, br.w):
+    if abs(bl.w - br.w) > tuned.thick_width_tol * max(bl.w, br.w):
         return fail(f"page widths differ ({bl.w:.0f} vs {br.w:.0f})")
     for b in (bl, br):
         if not 1.0 < b.h / b.w < 2.0:
             return fail(f"page shape {b.w:.0f}x{b.h:.0f}")
         x_a, y_a, x_b, y_b = b.bounding_rect()
-        if min(x_a, y_a, w - x_b, h - y_b) < 2.0 * mm:  # V600 V02: a page "ending" 0.6 mm from the border
+        if min(x_a, y_a, w - x_b, h - y_b) < tuned.thick_border_mm * mm:  # V600 V02: a page "ending" 0.6 mm from the border
             return fail("page at the image border")
     out = []
     for b, side in ((bl, "L"), (br, "R")):

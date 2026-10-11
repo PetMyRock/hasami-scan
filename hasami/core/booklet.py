@@ -44,6 +44,7 @@ from .autocrop import (
     _working_image,
     to_float_rgb,
 )
+from . import profiles
 from .geometry import CropBox, reading_order
 
 Side = tuple[int, int]  # (axis, sign) as produced by ``_box_sides``
@@ -304,7 +305,7 @@ def _shrink_to_paper_edges(a: _Analysis, box: CropBox, keep: set[Side] | frozens
         # (Measured away from the corners: on a page that runs off the bed the
         # corners of the neighbouring sides are at the border.)
         border = min(_distance_to_border(p0 + f * (p1 - p0), n, w, h) for f in (0.15, 0.5, 0.85))
-        margin = max(4.0, 0.012 * min(w, h))
+        margin = max(4.0, profiles.current().shrink_margin * min(w, h))
         if (axis, sign) in keep:
             continue  # cut off
         # Already a paper edge with lid beyond it?  Right on the border that
@@ -615,7 +616,7 @@ def _find_spine(a: _Analysis, box: CropBox, axis: int, cut: dict[Side, bool],
     s_outline = np.zeros(n, np.float32)
     if full is not None:
         # A clear break (~1 mm) outweighs a column of photos or a rule.
-        s_outline = 8.0 * _outline_breaks(full[0], full[1], full[2], c, u_dir, v_dir, len_v, us)
+        s_outline = profiles.current().outline_weight * _outline_breaks(full[0], full[1], full[2], c, u_dir, v_dir, len_v, us)
     cues = s_shade + s_seam + s_crease + s_outline
     score = cues + 0.5 * gapness * (cues > 0.3)
     score[~col_ok] = 0
@@ -730,6 +731,8 @@ def _visible_booklet(coarse, sw: int, sh: int) -> CropBox:
     # border "reach" is unreliable (the lid's shadows reach the border too),
     # and a page that really runs off the bed has print in the strip, which
     # ``_plain_strip`` refuses to give up.
+    if not profiles.current().shrink_to_paper_edges:
+        return booklet
     return _shrink_to_paper_edges(a, booklet)
 
 
@@ -750,7 +753,7 @@ def detect_booklet(image: np.ndarray, settings: AutoCropSettings | None = None,
         tall = _booklet_is_tall(image, st, dpi)
         land, port = (rot(image), image) if tall else (image, rot(image))
         spread = _detect_pages(land, st, dpi)
-        if len(spread) == 2 and min(p.confidence for p in spread) >= 0.99:
+        if len(spread) == 2 and min(p.confidence for p in spread) >= profiles.current().spread_confidence:
             across, pages = tall, spread
         else:
             across, pages = not tall, _detect_pages(port, st, dpi)
@@ -834,6 +837,8 @@ def _fit_thick(image: np.ndarray, dpi: float) -> list[CropBox] | None:
     for the fit and the pages are turned back."""
     from .thickbook import fit_spread
 
+    if not profiles.current().thick_books:
+        return None
     dbg: dict = {}
     pages = fit_spread(image, dpi, dbg)
     if pages is not None or "landscape" not in dbg.get("fail", ""):
@@ -918,7 +923,7 @@ def _detect_pages(image: np.ndarray, st: AutoCropSettings, dpi: float) -> list[C
             # photos) must not split it unevenly.  (An end at the image border
             # may be a page running off the bed that looks like a paper edge,
             # e.g. white paper on a white lid.)
-            sp = _find_spine(a, booklet, ax, cut, window=(0.455, 0.545), full=full_res)
+            sp = _find_spine(a, booklet, ax, cut, window=profiles.current().middle_window, full=full_res)
             if sp is not None and (sp.method == "gap" or sp.score < 0.5):
                 sp = None
             if sp is not None and (spine is None or sp.score > spine.score):
@@ -939,9 +944,10 @@ def _detect_pages(image: np.ndarray, st: AutoCropSettings, dpi: float) -> list[C
         # the glass is clearly landscape.  A clearly portrait booklet is never
         # split (cover art has strong horizontal bands); a square-ish one only
         # by a very clear spine.
-        if booklet.h > 1.15 * booklet.w or spine.score < 4.0 or spine.method == "gap":
+        if booklet.h > 1.15 * booklet.w or spine.score < profiles.current().cover_split_score or spine.method == "gap":
             spine = None
-    elif spine is not None and spine.score < 2.5 and not any(cut.values()) and not any(touch.values()):
+    elif (spine is not None and spine.score < profiles.current().lid_all_round_split_score
+          and not any(cut.values()) and not any(touch.values())):
         # The whole booklet is on the glass with lid all round: a whole spread has a clear spine
         # (V600 whole spreads score >= 13 at 200 dpi), a cover only faint lines (V43 landscape:
         # 0.8; V17 at 200 dpi, whose bottom edge is not verified: 1.6).

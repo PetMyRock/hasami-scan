@@ -64,7 +64,12 @@ separately.
 |---|---|
 | **Epson Perfection V600** | Tuned: 57 real scans (booklet spreads, booklets too big for the bed, covers, prints) and 26 scans of a thick artbook all crop correctly. |
 | Epson Perfection V39 | Tuned on older scans (black bed and light lid). |
-| Other scanners | They work, but auto-crop is not tuned for them yet. |
+| Other scanners | They work with the default profile, but auto-crop is not tuned for them yet. |
+
+Each tuned scanner model has its own **scanner profile** (the auto-crop's
+tuned numbers and switches), picked automatically from the scanner's name:
+tuning a new scanner never changes how the others crop. **Crop → Scanner
+profile** chooses one by hand; the status bar shows which one is in use.
 
 **Want your scanner tuned?** Ask on the project's
 [Discord server](https://discord.gg/TAAV8B9WWg). You send a few scans (an empty bed, and items you actually
