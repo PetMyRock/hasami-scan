@@ -52,11 +52,22 @@ class InputSettings:
 
 
 @dataclass
+class UpdateSettings:
+    #: The installed app asks GitHub for a newer release at most once a day on start.
+    check_on_start: bool = True
+    #: When it last asked (time.time()).
+    last_check: float = 0.0
+    #: A version the user chose to skip: not offered again on start.
+    skipped: str = ""
+
+
+@dataclass
 class AppSettings:
     input: InputSettings = field(default_factory=InputSettings)
     crop: AutoCropSettings = field(default_factory=AutoCropSettings)
     color: ProcessSettings = field(default_factory=ProcessSettings)
     output: OutputSettings = field(default_factory=OutputSettings)
+    updates: UpdateSettings = field(default_factory=UpdateSettings)
 
 
 #: Files carried over from the old settings folder ("scanner", before 0.4.2).

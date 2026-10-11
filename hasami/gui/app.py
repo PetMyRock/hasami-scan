@@ -28,7 +28,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from .. import __version__
+from .. import __version__, updates
 from ..devices.base import list_devices
 from ..settings import load_settings, save_settings
 from ..workflow import Session, box_mm_to_px
@@ -150,6 +150,8 @@ class MainWindow(QMainWindow):
         self.preview.scene().selectionChanged.connect(self._show_skew)
 
         self.refresh_devices()
+        if getattr(sys, "frozen", False) and updates.due(self.settings):
+            self.check_updates(manual=False)  # the installed app only; source checkouts use git
 
     # ----------------------------------------------------------------- setup
     def _build_actions(self) -> None:
@@ -208,7 +210,53 @@ class MainWindow(QMainWindow):
         for a in (self.a_rot_left, self.a_rot_right, self.a_zoom_in, self.a_zoom_out, self.a_fit):
             m.addAction(a)
         m = self.menuBar().addMenu("&Help")
+        m.addAction(act("Check for updates", lambda: self.check_updates(manual=True)))
+        self.a_auto_update = act("Check for updates on start", self._toggle_auto_update,
+                                 tip="At most once a day, ask GitHub whether a newer version is out")
+        self.a_auto_update.setCheckable(True)
+        self.a_auto_update.setChecked(self.settings.updates.check_on_start)
+        m.addAction(self.a_auto_update)
+        m.addSeparator()
         m.addAction(act("About", self.about))
+
+    # --------------------------------------------------------------- updates
+    def _toggle_auto_update(self, *_) -> None:
+        self.settings.updates.check_on_start = self.a_auto_update.isChecked()
+        self._save_timer.start()
+
+    def check_updates(self, manual: bool = False) -> None:
+        """Ask GitHub for a newer release (in the background); ``manual``: from the Help menu."""
+        t = worker.Task(lambda p, c, s: updates.fetch_latest())
+        t.signals.finished.connect(lambda rel: self._update_checked(rel, manual))
+        t.signals.failed.connect(lambda msg: manual and QMessageBox.information(
+            self, "Hasami Scan", f"Could not check for updates:\n{msg}"))
+        worker.start(t)
+        self._keep(t)
+
+    def _update_checked(self, rel, manual: bool) -> None:
+        st = self.settings.updates
+        st.last_check = time.time()
+        self._save_timer.start()
+        if not updates.should_offer(rel, __version__, st.skipped, manual):
+            if manual:
+                QMessageBox.information(self, "Hasami Scan", f"You have the latest version ({__version__}).")
+            return
+        box = QMessageBox(self)
+        box.setWindowTitle("Hasami Scan")
+        box.setIcon(QMessageBox.Information)
+        box.setTextFormat(Qt.RichText)
+        box.setText(f"<b>Hasami Scan {rel.version}</b> is available (you have {__version__}).<p>"
+                    f"<a href='{rel.page}'>What's new</a>.  Download the installer and run it: "
+                    "your settings are kept.")
+        download = box.addButton("Download", QMessageBox.AcceptRole)
+        skip = box.addButton("Skip this version", QMessageBox.RejectRole) if not manual else None
+        box.addButton("Later", QMessageBox.RejectRole)
+        box.exec()
+        if box.clickedButton() is download:
+            QDesktopServices.openUrl(QUrl(rel.installer or rel.page))
+        elif skip is not None and box.clickedButton() is skip:
+            st.skipped = rel.version
+            self._save_timer.start()
 
     # --------------------------------------------------------------- devices
     def refresh_devices(self) -> None:

@@ -42,6 +42,11 @@ EPSON Scan). The app picks the best connection to your scanner by itself;
 **Input → Show all scanner connections** lists the others (WIA, VueScan's
 TWAIN source). Settings are kept in `%APPDATA%\HasamiScan`.
 
+**Updates:** once a day on start, the app asks GitHub whether a newer
+version is out, and offers to download it (your settings are kept). Turn this
+off under **Help → Check for updates on start**; **Help → Check for updates**
+asks at once. Nothing is sent besides that request.
+
 The install folder also has `hasami.exe`, the command line:
 `hasami list`, `hasami diag` (a report on what the scanner driver offers,
 with a small test scan).
