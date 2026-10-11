@@ -19,6 +19,12 @@ trading cards.
   appears strip by strip as the scanner moves. There is a raw-file option, and
   turning the preview turns every saved scan.
 
+> **AI disclosure:** Hasami Scan was created with the help of AI. Most of
+> the code, tests and documentation were written by Anthropic's Claude
+> (through Claude Code), directed by the maintainer and tested on real
+> scanners and real scans. Review it as you would any other code before
+> relying on it.
+
 ## Install (Windows)
 
 1. Install your scanner's own driver first, for example Epson Scan from your
