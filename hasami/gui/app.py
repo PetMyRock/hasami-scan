@@ -507,6 +507,8 @@ class MainWindow(QMainWindow):
                 self.set_status(f"Booklet: cropping the fully visible page{'s' if len(boxes) > 1 else ''}")
         else:
             self.set_status(f"Found {len(boxes)} item(s). Drag to adjust, drag on empty space to add a crop.")
+        if mode != "off":
+            self.set_status(f"{self.status_label.text()}  [profile: {self.session.profile().label}]")
 
     def redetect(self) -> None:
         if self.session.preview is None or self.task is not None:

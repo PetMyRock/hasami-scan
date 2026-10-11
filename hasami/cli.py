@@ -32,6 +32,8 @@ def _add_common(p: argparse.ArgumentParser) -> None:
                    help="booklet mode with the whole spread on the glass: each page (default) or one image")
     g.add_argument("--booklet-rtl", action="store_true",
                    help="booklet mode, two pages: right page first (books read right to left)")
+    g.add_argument("--profile", help="scanner profile (tuned numbers per scanner model): auto (from the "
+                        "scanner), default, epson-v600, ...")
     g.add_argument("--sensitivity", type=float, help="0..1, higher finds fainter items")
     g.add_argument("--margin-mm", type=float, help="crop inside (+) or outside (-) the detected edge")
     g.add_argument("--no-deskew", action="store_true", help="keep crops axis-aligned")
@@ -66,7 +68,8 @@ def _add_common(p: argparse.ArgumentParser) -> None:
 def _apply(args, st: AppSettings) -> AppSettings:
     c, k, o = st.crop, st.color, st.output
     for attr, val in (("mode", args.crop), ("sensitivity", args.sensitivity), ("margin_mm", args.margin_mm),
-                      ("min_area", args.min_area), ("booklet_output", args.booklet_output)):
+                      ("min_area", args.min_area), ("booklet_output", args.booklet_output),
+                      ("profile", args.profile)):
         if val is not None:
             setattr(c, attr, val)
     if args.booklet_rtl:

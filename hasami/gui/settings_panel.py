@@ -53,6 +53,10 @@ class Field:
     enabled_if: Callable[[Any], bool] | None = None  # greyed out unless true for the settings
 
 
+from ..core.profiles import choices as _profile_choices
+
+PROFILE_CHOICES = _profile_choices()
+
 DPI_CHOICES = [(str(d), d) for d in (50, 75, 100, 150, 200, 300, 400, 600, 800, 1200, 2400, 4800)]
 
 TABS: list[tuple[str, list[Field]]] = [
@@ -103,6 +107,10 @@ TABS: list[tuple[str, list[Field]]] = [
               tip="Booklet mode with both pages as separate images: which page is crop 1 (saved first). "
                   "Tick for books read right to left (Japanese booklets).  Left and right as "
                   "seen in the preview."),
+        Field("crop", "profile", "Scanner profile", PROFILE_CHOICES,
+              tip="Auto-crop is tuned for each scanner model (its lid, light and edges).  Automatic "
+                  "picks the profile of the scanner in use; scanners without their own profile use "
+                  "Default.  Ask on the project's Discord to have your scanner tuned."),
         Field("crop", "sensitivity", "Sensitivity", lo=0, hi=1, step=0.05,
               tip="Higher finds fainter items, such as pale prints on a white lid"),
         Field("crop", "margin_mm", "Margin (mm)", lo=-10, hi=10, step=0.05,

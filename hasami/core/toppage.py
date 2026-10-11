@@ -5,14 +5,14 @@ page stack: fine lines parallel to the side, often greyer), and covers can show 
 shadow band along the edge.  The maintainer wants the crop to end at the top page's printed edge
 (Oct 2026).  This works on the full-resolution image, one page side at a time:
 
-1. a strip across the side (from ``DEPTH_MM`` inside to ``OUT_MM`` outside the current side) is
+1. a strip across the side (from ``depth_mm`` inside to ``out_mm`` outside the current side) is
    cut into segments along the side; each segment's median profile gives its edge positions
    (peaks of the Lab gradient);
 2. straight lines that most segments agree on are the "layer lines" (the stack's page edges,
    the top page's edge, a cover's board edge) - print inside the page rarely forms a line
    along the whole side;
 3. starting at the layer line at the current side, the chain of layer lines going inwards
-   (each at most ``GAP_MM`` from the next) is the page stack; its innermost line is the top
+   (each at most ``gap_mm`` from the next) is the page stack; its innermost line is the top
    page's edge.  Each side gets its own line (own angle: the pages of a book need not line up).
 
 The page is then rebuilt as the rectangle through its four lines (the spine side unchanged).
@@ -26,26 +26,9 @@ import cv2
 import numpy as np
 
 from .geometry import CropBox
+from .profiles import current as _profile  # tuned numbers: the scanner's profile
 
 MM_PER_INCH = 25.4
-DEPTH_MM = 10.0  # how far inside the current side a stack band may reach
-OUT_MM = 1.0  # and outside it (the current side can be a little inside the outer layer)
-START_OUT_MM = 0.6  # the chain starts at the outermost layer line between this far outside the side
-START_IN_MM = 4.5  # and this far inside it (the side can sit on a soft shadow beyond the paper)
-WIDE_GAP_MM = 6.0  # a wider gap counts only when it is a little darker than light paper
-NEAR_MM = 1.0  # page edges this close together are always one stack
-DARKER_L = 2.0
-LIGHTER_L = 3.0  # a stepped-out lower page is not lighter than the top page
-MAX_HUE_DIFF = 8.0  # a* b* distance: more = coloured print, not paper
-SHADOW_L = 4.0  # lid shadow beyond the paper is at least this much darker than the paper
-MAX_DARKER_L = 15.0  # much darker = print or dark paper, not a lower page
-LIGHT_PAPER_L = 70.0  # only on light paper (dark paper margins are darker than their print)
-GAP_MM = 2.2  # largest gap between two layer lines of one stack (beyond NEAR_MM: see ``_stack_gap``)
-SEGMENTS = 16
-CREASE_MM = 3.0  # the spine side snaps to the fold's crease within this distance
-CREASE_SUPPORT = 0.6
-SUPPORT = 0.6  # share of the segments a layer line needs
-MAX_TILT = 0.02  # layer lines may turn this much (rad) against the side
 SIDES = ((1, -1), (0, 1), (1, 1), (0, -1))  # top, right, bottom, left (axis, sign)
 
 #: Diagnostics of the last call per side (filled when not None).
@@ -80,11 +63,12 @@ def _side(box: CropBox, key: tuple[int, int]):
     return a, e, d, np.array([d[1], -d[0]])
 
 
-def _strip(rgb8: np.ndarray, a, e, d, n, px_mm: float, step_px: float, out_mm: float = OUT_MM):
-    """Lab strip in the side's frame: rows along the side (6..94 %), columns from -DEPTH_MM to
+def _strip(rgb8: np.ndarray, a, e, d, n, px_mm: float, step_px: float, out_mm: float | None = None):
+    """Lab strip in the side's frame: rows along the side (6..94 %), columns from -depth_mm to
     +out_mm; L is -1 outside the image.  Only the strip is converted (scans are big)."""
+    out_mm = _profile().out_mm if out_mm is None else out_mm
     L = float(np.linalg.norm(e - a))
-    xs = np.arange(-DEPTH_MM * px_mm, out_mm * px_mm, step_px)
+    xs = np.arange(-_profile().depth_mm * px_mm, out_mm * px_mm, step_px)
     ys = np.arange(0.06 * L, 0.94 * L, step_px)
     X, Y = np.meshgrid(xs, ys)
     mx = (a[0] + n[0] * X + d[0] * Y).astype(np.float32)
@@ -99,7 +83,7 @@ def _strip(rgb8: np.ndarray, a, e, d, n, px_mm: float, step_px: float, out_mm: f
 def _segment_peaks(s: np.ndarray, xs: np.ndarray, ys: np.ndarray, step_mm: float):
     """Edge positions per segment: (x_px, y_px, strength) of gradient peaks of the median profile."""
     pts = []
-    rows = np.array_split(np.arange(len(ys)), SEGMENTS)
+    rows = np.array_split(np.arange(len(ys)), _profile().segments)
     sig = max(0.05 / step_mm, 0.7)
     for k, r in enumerate(rows):
         if len(r) < 3:
@@ -117,15 +101,15 @@ def _segment_peaks(s: np.ndarray, xs: np.ndarray, ys: np.ndarray, step_mm: float
 
 
 def _layer_lines(pts, px_mm: float, side_len: float):
-    """Straight lines (x at the side's middle, slope) supported by >= SUPPORT of the segments."""
+    """Straight lines (x at the side's middle, slope) supported by >= support of the segments."""
     if not pts:
         return []
     P = np.array(pts)
     x, y, k = P[:, 0], P[:, 1] - side_len / 2, P[:, 3].astype(int)
     tol = 0.12 * px_mm
     binw = 0.05 * px_mm
-    nb = max(1, int(MAX_TILT * side_len / 2 / binw))
-    slopes = np.linspace(-MAX_TILT, MAX_TILT, 2 * nb + 1)
+    nb = max(1, int(_profile().max_tilt * side_len / 2 / binw))
+    slopes = np.linspace(-_profile().max_tilt, _profile().max_tilt, 2 * nb + 1)
     lo, hi = x.min() - tol, x.max() + tol
     edges = np.arange(lo, hi + binw, binw)
     best = []
@@ -141,7 +125,7 @@ def _layer_lines(pts, px_mm: float, side_len: float):
             sup += hit
         best.append(sup)
     S = np.array(best)  # (slopes, bins)
-    need = SUPPORT * SEGMENTS
+    need = _profile().support * _profile().segments
     lines = []
     used = np.zeros_like(S, bool)
     order = np.argsort(-S, axis=None)
@@ -177,18 +161,18 @@ def _stack_gap(S, X, Y, lines, ln, cur, px_mm: float, wide: bool) -> bool:
     band = _between(S, X, Y, ln, cur, 0.3 * px_mm)
     if band is None:
         return False
-    near = [ln] + [o for o in lines if 0 < ln[0] - o[0] <= GAP_MM * px_mm]
+    near = [ln] + [o for o in lines if 0 < ln[0] - o[0] <= _profile().gap_mm * px_mm]
     for c in near:
         inside = _between(S, X, Y, (c[0] - 1.3 * px_mm, c[1]), (c[0], c[1]), 0.3 * px_mm)
         if inside is None:
             continue
         dL = inside[0] - band[0]  # > 0: the band is darker
         dab = float(np.hypot(*(inside[1:] - band[1:])))
-        if dab > MAX_HUE_DIFF or dL > MAX_DARKER_L:
+        if dab > _profile().max_hue_diff or dL > _profile().max_darker_l:
             continue
-        if not wide and dL >= -LIGHTER_L:
+        if not wide and dL >= -_profile().lighter_l:
             return True
-        if wide and inside[0] >= LIGHT_PAPER_L and dL >= DARKER_L:
+        if wide and inside[0] >= _profile().light_paper_l and dL >= _profile().darker_l:
             return True
     return False
 
@@ -198,54 +182,55 @@ def _stack_goes_on(lines, ln, px_mm: float, n: int = 2) -> bool:
     print along the top page's edge is not followed by a row of lines)."""
     x = ln[0]
     for _ in range(n):
-        nxt = [o for o in lines if 0 < x - o[0] <= NEAR_MM * px_mm]
+        nxt = [o for o in lines if 0 < x - o[0] <= _profile().near_mm * px_mm]
         if not nxt:
             return False
         x = max(o[0] for o in nxt)
     return True
 
 
-def _chain(lines, px_mm: float, S=None, X=None, Y=None, start_out: float = START_OUT_MM):
+def _chain(lines, px_mm: float, S=None, X=None, Y=None, start_out: float | None = None):
     """Innermost line of the layer chain starting near the current side (x = 0), or None.
 
-    Neighbouring page edges of a stack are close together (<= NEAR_MM: always chained).  A gap up
-    to GAP_MM (pages stepped out a little) is chained when its strip looks like paper or more
+    Neighbouring page edges of a stack are close together (<= near_mm: always chained).  A gap up
+    to gap_mm (pages stepped out a little) is chained when its strip looks like paper or more
     page edges follow at stack spacing, and up to
-    WIDE_GAP_MM (a lower page sticking out a few mm) when it is also a little darker than light
+    wide_gap_mm (a lower page sticking out a few mm) when it is also a little darker than light
     paper; see ``_stack_gap``."""
-    start = [ln for ln in lines if -START_IN_MM * px_mm <= ln[0] <= start_out * px_mm]
+    start_out = _profile().start_out_mm if start_out is None else start_out
+    start = [ln for ln in lines if -_profile().start_in_mm * px_mm <= ln[0] <= start_out * px_mm]
     far = not start
     if far:
         # The side may sit on soft lid shadow far beyond the paper (a low-resolution preview):
         # start at the outermost line deeper in, and keep the result only when the strip outside
         # that line is plain shadow, clearly darker than the top page's paper.
-        start = [ln for ln in lines if ln[0] < -START_IN_MM * px_mm]
+        start = [ln for ln in lines if ln[0] < -_profile().start_in_mm * px_mm]
         if S is None or not start:
             return None
     first = cur = max(start, key=lambda ln: ln[0])
     for ln in sorted((ln for ln in lines if ln[0] < cur[0]), key=lambda t: -t[0]):
         gap = cur[0] - ln[0]
-        if gap > NEAR_MM * px_mm:
-            if S is None or gap > WIDE_GAP_MM * px_mm:
+        if gap > _profile().near_mm * px_mm:
+            if S is None or gap > _profile().wide_gap_mm * px_mm:
                 break
-            if not _stack_gap(S, X, Y, lines, ln, cur, px_mm, wide=gap > GAP_MM * px_mm) and not (
-                    gap <= GAP_MM * px_mm and _stack_goes_on(lines, ln, px_mm)):
+            if not _stack_gap(S, X, Y, lines, ln, cur, px_mm, wide=gap > _profile().gap_mm * px_mm) and not (
+                    gap <= _profile().gap_mm * px_mm and _stack_goes_on(lines, ln, px_mm)):
                 break
         cur = ln
     if far:
         shade = _between(S, X, Y, first, (0.0, first[1]), 0.3 * px_mm)
         paper = _between(S, X, Y, (cur[0] - 1.3 * px_mm, cur[1]), cur, 0.3 * px_mm)
-        if (shade is None or paper is None or paper[0] < LIGHT_PAPER_L
-                or paper[0] - shade[0] < SHADOW_L):
+        if (shade is None or paper is None or paper[0] < _profile().light_paper_l
+                or paper[0] - shade[0] < _profile().shadow_l):
             return None
     return cur
 
 
 def _crease(rgb8: np.ndarray, a, e, d, n, px_mm: float, step: float, reach_mm: float = None):
     """The fold's crease near a spine side: a narrow dark valley that most segments along the side
-    agree on, within CREASE_MM of the side.  (x0 at the side's middle in px, slope) or None."""
+    agree on, within crease_mm of the side.  (x0 at the side's middle in px, slope) or None."""
     side_len = float(np.linalg.norm(e - a))
-    reach_mm = CREASE_MM if reach_mm is None else reach_mm
+    reach_mm = _profile().crease_mm if reach_mm is None else reach_mm
     xs = np.arange(-reach_mm * px_mm, reach_mm * px_mm, step)
     ys = np.arange(0.15 * side_len, 0.85 * side_len, step)
     X, Y = np.meshgrid(xs, ys)
@@ -254,7 +239,7 @@ def _crease(rgb8: np.ndarray, a, e, d, n, px_mm: float, step: float, reach_mm: f
                   (a[1] + n[1] * X + d[1] * Y).astype(np.float32), cv2.INTER_LINEAR).astype(np.float32)
     step_mm = step / px_mm
     pts = []
-    for rows in np.array_split(np.arange(len(ys)), SEGMENTS):
+    for rows in np.array_split(np.arange(len(ys)), _profile().segments):
         if len(rows) < 3:
             continue
         pr = np.median(s[rows], axis=0)
@@ -267,10 +252,10 @@ def _crease(rgb8: np.ndarray, a, e, d, n, px_mm: float, step: float, reach_mm: f
     P = np.array(pts)
     med = np.median(P[:, 0])
     ok = np.abs(P[:, 0] - med) < 0.3 * px_mm
-    if ok.mean() < CREASE_SUPPORT or ok.sum() < 4:
+    if ok.mean() < _profile().crease_support or ok.sum() < 4:
         return None
     b, x0 = np.polyfit(P[ok, 1], P[ok, 0], 1)
-    if abs(b) > MAX_TILT:
+    if abs(b) > _profile().max_tilt:
         return None
     return float(x0), float(b)
 
@@ -312,8 +297,8 @@ def box_from_lines(lines: dict, confidence: float = 1.0) -> CropBox:
 
 
 def top_page(image: np.ndarray, box: CropBox, dpi: float, keep=(), rgb8: np.ndarray | None = None,
-             start_out: float = START_OUT_MM, snap_spine: bool = True, snap=None,
-             crease_mm: float = CREASE_MM) -> tuple[CropBox, dict]:
+             start_out: float | None = None, snap_spine: bool = True, snap=None,
+             crease_mm: float | None = None) -> tuple[CropBox, dict]:
     """Move every side of ``box`` not in ``keep`` in to the top page's edge.
 
     ``box`` must lie on the paper's outer edge (no margin).  Returns the new box (meta copied) and
@@ -321,6 +306,9 @@ def top_page(image: np.ndarray, box: CropBox, dpi: float, keep=(), rgb8: np.ndar
     far outside the side (mm) the outermost layer may be (larger when the box comes from a
     low-resolution preview).  Kept sides (spines) snap to the fold's crease when one is clear
     (``snap``: only these of them)."""
+    prof = _profile()
+    start_out = prof.start_out_mm if start_out is None else start_out
+    crease_mm = prof.crease_mm if crease_mm is None else crease_mm
     rgb8 = _rgb8(image) if rgb8 is None else rgb8
     px_mm = dpi / MM_PER_INCH
     step = max(1.0, px_mm / 16.0)  # sample at <= 16 px/mm
@@ -341,7 +329,7 @@ def top_page(image: np.ndarray, box: CropBox, dpi: float, keep=(), rgb8: np.ndar
                 lines[key] = (a + d * (side_len / 2) + n * cr[0], dd / np.linalg.norm(dd))
                 shifts[key] = cr[0] / px_mm
             continue
-        xs, ys, s, valid = _strip(rgb8, a, e, d, n, px_mm, step, max(OUT_MM, start_out + 0.4))
+        xs, ys, s, valid = _strip(rgb8, a, e, d, n, px_mm, step, max(_profile().out_mm, start_out + 0.4))
         if valid.mean() < 0.9:
             continue  # the side runs off the image
         side_len = float(np.linalg.norm(e - a))
