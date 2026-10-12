@@ -78,6 +78,11 @@ profile** chooses one by hand; the status bar shows which one is in use.
 scan), the crops are checked by hand and auto-crop is tuned against them.
 Scans are used only for testing and are never published.
 
+**Test scan** (toolbar, Ctrl+T) makes such a scan in one click: the whole bed at
+400 dpi, whatever the crops and scan resolution are, saved uncropped as a TIFF in its
+own folder with its own file name (Output → Test scans). Press it when the
+auto-crop gets something wrong, and send the file.
+
 ## Use
 
 1. Put the item face down on the glass and close the lid.
@@ -105,7 +110,7 @@ Settings are organised like VueScan's tabs:
 - **Crop:** auto-crop mode, booklet options, sensitivity, margin, rotation, skew.
 - **Filter:** descreen (for the dot pattern of printed artbooks), dust removal, sharpening.
 - **Colour:** levels, white balance, faded-colour restore, negatives.
-- **Output:** folder, file name, JPEG/PNG/TIFF/WebP/PDF, raw file.
+- **Output:** folder, file name, JPEG/PNG/TIFF/WebP/PDF, raw file, test scans.
 
 | Auto-crop mode | Use for |
 |---|---|

@@ -157,6 +157,11 @@ TABS: list[tuple[str, list[Field]]] = [
               tip="The cropped scan exactly as the scanner delivered it: no levels, white balance or other "
                   "colour processing, saved as TIFF at the scanner's bit depth.  Reprocess it later with "
                   "the file: scanner or 'scanner crop FILE --crop off'."),
+        Field("output", "test_folder", "Test scans: folder", kind="folder",
+              tip="Where the Test scan button saves: the whole bed, uncropped, as the scanner "
+                  "delivered it (TIFF). Send these when the auto-crop got something wrong."),
+        Field("output", "test_prefix", "Test scans: file name prefix"),
+        Field("output", "test_dpi", "Test scans: resolution (dpi)", DPI_CHOICES),
     ]),
 ]
 
@@ -272,10 +277,10 @@ class SettingsPanel(QTabWidget):
                 btn = QPushButton("Browse...")
                 row.addWidget(btn)
 
-                def browse(*_, edit=edit):
+                def browse(*_, edit=edit, label=f.label):
                     # (clicked() passes its "checked" flag: keep it out of ``edit``.)
                     start = os.path.expanduser(edit.text() or "~")
-                    d = QFileDialog.getExistingDirectory(self, "Output folder", start)
+                    d = QFileDialog.getExistingDirectory(self, label, start)
                     if d:
                         edit.setText(d)
                         self._emit(key)

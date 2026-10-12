@@ -196,6 +196,14 @@ do not get worse. Plan: per-scanner profiles picked from the driver's model
 name, with a drop-down to override. Tuned so far: Epson Perfection V600 (57
 scans + 26 thick-book spreads, all pass), Epson V39 (older scans).
 
+## Test scans (0.5.8, owner)
+Toolbar/Scan menu "Test scan" (Ctrl+T, `MainWindow.do_test_scan` -> `Session.run_test_scan`):
+whole bed at `output.test_dpi` (400), crops and scan dpi ignored, colour, 8-bit, the same raw
+flag as normal scans; saved UNCROPPED and UNTURNED (scanner frame: no `--turn` needed in the
+benchmark) as TIFF `output.test_prefix` + number in `output.test_folder`. Preview and boxes
+are kept (live view fills in the whole bed, `end_live` restores them). File menu "Open test
+scan folder". Owner sends these when a crop is wrong.
+
 ## Ideas not done yet
 - Code signing (unsigned installers show SmartScreen's warning).
 - Synthetic horizontal booklets: a blank page margin at the image edge is taken

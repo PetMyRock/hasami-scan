@@ -17,7 +17,7 @@ import numpy as np
 
 from .core import autocrop
 from .core.geometry import CropBox, extract
-from .core.output import save_items, save_raw_items
+from .core.output import next_filenames, save_image, save_items, save_raw_items
 from .core.processing import process
 from .devices.base import (
     MM_PER_INCH,
@@ -207,6 +207,28 @@ class Session:
             if cancel is not None and cancel.is_set():
                 break
         return outcomes
+
+    def run_test_scan(self, progress: ProgressFn | None = None, cancel: threading.Event | None = None,
+                      status: StatusFn | None = None) -> tuple[ScanResult, Path]:
+        """Scan the whole bed at ``output.test_dpi`` (crop boxes and the scan resolution are
+        ignored) and save it uncropped, as the scanner delivered it, as a TIFF named
+        ``output.test_prefix`` + number in ``output.test_folder``: test data for tuning the
+        auto-crop.  Nothing else changes (preview, boxes, the normal output numbering)."""
+        st = self.settings
+        out = st.output
+        raw = out.raw_file in ("only", "also")  # the same driver settings as the normal scans
+        req = ScanRequest(dpi=out.test_dpi, mode="color", source=st.input.source, area_mm=None,
+                          bit_depth=8, raw=raw, live=self.live)
+        result = self.open().scan(req, progress, cancel)
+        if status:
+            h, w = result.image.shape[:2]
+            status(f"Scanned {result.area_mm[2]:.0f} x {result.area_mm[3]:.0f} mm at {result.dpi:.0f} dpi "
+                   f"({w} x {h} px). Saving...")
+        folder = out.test_path
+        folder.mkdir(parents=True, exist_ok=True)
+        (path,) = next_filenames(folder, out.test_prefix, "tif", 1, out.digits)
+        save_image(result.image, path, out, dpi=result.dpi)
+        return result, path
 
     def crop_image(self, image: np.ndarray, dpi: float, save: bool = True,
                    status: StatusFn | None = None) -> ScanOutcome:
