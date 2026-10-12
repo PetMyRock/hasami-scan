@@ -80,12 +80,13 @@ def _distance_to_border(p: np.ndarray, n: np.ndarray, w: int, h: int) -> float:
 
 
 def _edge_reach(a: _Analysis, p0: np.ndarray, p1: np.ndarray, n: np.ndarray, w: int, h: int,
-                window: float = 6.0) -> tuple[bool, bool, bool]:
+                window: float = 6.0, min_step: float = 0.0) -> tuple[bool, bool, bool]:
     """Follow the paper edge along box side ``p0 -> p1`` beyond both corners.
 
     Returns ``(is_edge, reaches_border_before_p0, reaches_border_after_p1)``.
     ``is_edge`` says whether the side is a paper edge along its own length
-    (where the booklet is cut off by the scan it is not).  The other two say
+    (where the booklet is cut off by the scan it is not), a step of at least
+    ``min_step`` L* per pixel.  The other two say
     whether the edge line carries on to the image border: a booklet that runs
     off the bed has top and bottom edges that reach the border on that side,
     while at a real page corner the edge stops.
@@ -111,6 +112,8 @@ def _edge_reach(a: _Analysis, p0: np.ndarray, p1: np.ndarray, n: np.ndarray, w: 
     if np.all(np.isnan(mean)):
         return False, False, False
     k = int(np.nanargmax(np.abs(mean)))
+    if abs(mean[k]) < min_step:
+        return False, False, False  # a soft hump in the lid's brightness, not a paper edge
     # A paper edge has lid beyond it.  At the image border
     # there is nothing beyond (a step there is the scanner's edge, or content
     # of a page that runs off the bed), so look for lid-coloured pixels past
@@ -312,7 +315,7 @@ def _shrink_to_paper_edges(a: _Analysis, box: CropBox, keep: set[Side] | frozens
         # may be the band's edge instead; near it (a pale page on a pale lid
         # close to the edge of the glass) only a step to darker shadow
         # outside may replace it, not the start of the print inside the page.
-        verified = border > 2.0 and _edge_reach(a, p0, p1, n, w, h)[0]
+        verified = border > 2.0 and _edge_reach(a, p0, p1, n, w, h, min_step=profiles.current().min_edge_step)[0]
         if verified and border > 2.0 * margin:
             continue
         perp = box.w if axis == 0 else box.h

@@ -162,6 +162,18 @@ profile's values; still run the real-scan benchmarks of all tuned scanners
 (shared code). More inline numbers can move into `Profile` as tuning needs
 them (keep the old value as the default so nothing changes).
 
+V600-only switches (0.5.5, artboard book with a thin page stack: very thin sheets 0.5 mm apart,
+lower pages' art columns, green cover, propped lid; 9 scans, all pass; the 57 + 26 unchanged
+case for case): `min_edge_step` 0.6 (the shrink treats a side as an existing paper edge only for a step of
+>= 0.6 L*/px in the working image: the lid's soft brightness hump, 0.1-0.3, kept the box 3 cm
+out in the lid); `fine_stack` (`toppage._through_fine_stack`: after the chain, faint lines from
+a lower threshold, 25th percentile of the gradient, continue it inwards when they form a run of
+>= 5 lines <= 0.8 mm apart; the run stops at 3 half-supported lines in a row = texture in dark
+print); `crease_step` (`toppage._step_out`: a broad one-sided valley - dark print up to the
+fold, facing page rising slowly - is replaced by the half-way point of the step up to the
+facing page, used only when most segments show it, then they may disagree by 0.5 mm; a sharp
+crease line rises at once and is left alone).
+
 ## Per-scanner tuning
 Users ask for tuning on the Discord server (https://discord.gg/TAAV8B9WWg) and share scans (an empty bed and
 real items). Truth is marked by eye at full resolution (5 points per side),

@@ -55,6 +55,12 @@ class Profile:
     cover_split_score: float = 4.0
     #: A booklet with lid all round (nothing cut or touching) is split only by a spine this clear.
     lid_all_round_split_score: float = 2.5
+    #: Light lids: a side that already lies on a paper edge (lid beyond it) is not pulled in; that
+    #: edge must be a brightness step of at least this many L* per pixel of the working image
+    #: (about 1000 px long; 0 = any step above the noise).  On a smooth lid the noise is tiny, and
+    #: the soft brightness hump of a propped-up lid (0.1-0.3) passed as a paper edge: the box
+    #: stayed ~3 cm out in the lid (KLK artboard).
+    min_edge_step: float = 0.0
 
     # ---- top page (toppage.py): crops end at the top page's printed edge ----
     depth_mm: float = 10.0  # how far inside the side a page-stack band may reach
@@ -75,6 +81,21 @@ class Profile:
     max_tilt: float = 0.02  # layer lines may turn this much (rad) against the side
     crease_mm: float = 3.0  # the spine side snaps to the fold's crease within this distance
     crease_support: float = 0.6
+    #: Dark print running into the fold next to a light facing page shows no crease line: the
+    #: darkest point is the gutter shading on the page itself (KLK artboard: ~1 mm inside the
+    #: fold).  Then the fold is the step up to the facing page (half-way up), when that side
+    #: rises clearly more than the page's own side.
+    crease_step: bool = False
+    crease_step_tol_mm: float = 0.5  # such a soft fold's segments agree within this distance
+    #: Thin page stacks (many sheets of very thin paper, ~0.5 mm apart: KLK artboard) have faint
+    #: page edges that the usual peak threshold misses next to dark textured art or a green
+    #: cover.  With ``fine_stack`` a second, lower threshold (this percentile of the strip's
+    #: gradient instead of the median) looks for them; its lines count only as a run of at least
+    #: ``fine_stack_lines`` lines at most ``fine_stack_gap_mm`` apart (print rarely makes that).
+    fine_stack: bool = False
+    fine_stack_percentile: float = 25.0
+    fine_stack_gap_mm: float = 0.8
+    fine_stack_lines: int = 5
 
     # ---- thick books on a light lid (thickbook.py) ----
     #: Fit a whole spread of a thick book (pages = the brightest plain surface).
@@ -95,8 +116,9 @@ PROFILES: dict[str, Profile] = {
     "epson-v600": replace(
         DEFAULT, name="epson-v600", label="Epson Perfection V600",
         match=(r"perfection\s*v600", r"\bgt-x820\b"),
-        tuned_on="57 scans (booklet spreads, booklets too big for the bed, covers, prints) "
-                 "and 26 thick-book spreads, Oct 2026"),
+        min_edge_step=0.6, crease_step=True, fine_stack=True,
+        tuned_on="57 scans (booklet spreads, booklets too big for the bed, covers, prints), "
+                 "26 thick-book spreads and 9 artboard pages with a thin page stack, Oct 2026"),
 }
 
 _ACTIVE: ContextVar[Profile] = ContextVar("hasami_profile", default=DEFAULT)
