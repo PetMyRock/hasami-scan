@@ -11,13 +11,14 @@ def test_v600_profile_differs_from_the_default_only_in_its_own_switches():
     # The default started as a copy of the V600's tuned values; behaviour added for the V600 later
     # (KLK artboard, Oct 2026) is switched on only in its profile, so other scanners are unchanged.
     ident = {"name", "label", "match", "tuned_on"}
-    own = {"min_edge_step", "crease_step", "fine_stack"}
+    own = {"min_edge_step", "crease_step", "fine_stack", "stack_by_segment"}
     v600, default = profiles.get("epson-v600"), profiles.DEFAULT
     for f in dataclasses.fields(profiles.Profile):
         if f.name not in ident | own:
             assert getattr(v600, f.name) == getattr(default, f.name), f.name
     assert default.min_edge_step == 0.0 and not default.crease_step and not default.fine_stack
-    assert v600.min_edge_step > 0 and v600.crease_step and v600.fine_stack
+    assert v600.min_edge_step > 0 and v600.crease_step and v600.fine_stack and v600.stack_by_segment
+    assert not default.stack_by_segment
 
 
 def test_profile_from_the_scanner_name():
@@ -95,6 +96,48 @@ def test_v600_profile_crops_a_thin_page_stack_off():
         found[name] = (out.bounding_rect()[0] - x0) / mm
     assert found["default"] < -2.0  # the faint sheet edges are missed: most of the stack stays
     assert abs(found["epson-v600"]) < 0.3, found
+
+
+def _art_column_scan(dark_share: float = 0.7):
+    """Plain top page; the page under it sticks out 1.7 mm and shows a column of its own (full
+    bleed) dark art along ``dark_share`` of the side, plain paper elsewhere; 6 thin sheets beyond
+    (like the KLK artboard crop from the app)."""
+    from hasami.core.geometry import CropBox
+
+    mm = 300 / 25.4
+    img = np.full((int(120 * mm), int(120 * mm), 3), 200, np.uint8)
+    x0, y0, x1, y1 = int(30 * mm), int(10 * mm), int(110 * mm), int(110 * mm)
+    img[y0:y1, x0:x1] = 236
+    lower = x0 - int(round(1.7 * mm))
+    img[y0:y1, lower:x0] = 215
+    img[y0:y0 + int(dark_share * (y1 - y0)), lower:x0] = 85
+    edges = [lower - int(round(k * 0.5 * mm)) for k in range(1, 7)]
+    for xa in edges:
+        img[y0:y1, xa:xa + int(round(0.5 * mm))] = 222
+    for xa in edges + [lower, x0]:
+        img[y0:y1, xa:xa + 2] = 200
+    box = CropBox.from_xywh(edges[-1], y0, x1 - edges[-1], y1 - y0)
+    return img, box, x0, mm
+
+
+def test_v600_profile_leaves_a_lower_pages_art_column_out():
+    # The strip between the lower page's edge and the top page's is half art, half paper: its
+    # median colour alone decided by a pixel. The top page's edge runs along the whole side.
+    from hasami.core.toppage import top_page
+
+    img, box, x0, mm = _art_column_scan()
+    found = {}
+    for name in ("default", "epson-v600"):
+        with profiles.use(name):
+            out, _ = top_page(img, box, 300, keep=[(0, 1), (1, -1), (1, 1)])
+        found[name] = (out.bounding_rect()[0] - x0) / mm
+    assert found["default"] < -1.4  # stops at the lower page's edge: its art column stays
+    assert abs(found["epson-v600"]) < 0.3, found
+    # Dark along the whole side: nothing tells it from print along the top page's edge.
+    img, box, x0, mm = _art_column_scan(1.0)
+    with profiles.use("epson-v600"):
+        out, _ = top_page(img, box, 300, keep=[(0, 1), (1, -1), (1, 1)])
+    assert (out.bounding_rect()[0] - x0) / mm < -1.4
 
 
 def test_v600_profile_finds_a_soft_fold():

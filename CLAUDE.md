@@ -173,6 +173,12 @@ print); `crease_step` (`toppage._step_out`: a broad one-sided valley - dark prin
 fold, facing page rising slowly - is replaced by the half-way point of the step up to the
 facing page, used only when most segments show it, then they may disagree by 0.5 mm; a sharp
 crease line rises at once and is left alone).
+0.5.6: `stack_by_segment` (`toppage._stack_gap`): a lower page sticking out 1.7 mm showed its
+own art column along ~half the side, plain paper elsewhere; the strip's median sat on the
+`max_darker_l` limit and a 1 px shift of the crop-area scan decided (owner's app crop kept the
+column). Now also a stack gap when the inner line has >= 85% support and >= 25% of the segments
+pass the colour test alone (print on the top page leaves no edge where it stops). Case: owner's
+F:\JPG\Wrong crop (0023 whole bed, 0024 the bad crop); 57 + 26 + 9 unchanged case for case.
 
 ## Per-scanner tuning
 Users ask for tuning on the Discord server (https://discord.gg/TAAV8B9WWg) and share scans (an empty bed and
