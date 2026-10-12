@@ -114,6 +114,12 @@ also work. Licence MIT (GPL-3.0 until 0.5.2). Python package `hasami`, distribut
 - Qt `clicked` passes a `checked` bool: slots with default args take `*_` first.
 - Empty preview: `START_HINT`, or `NO_SCANNER` when nothing is found.
 
+## Auto-crop off (0.5.4, owner)
+Switching Auto-crop to Off removes EVERY crop box (drawn ones too: `App.on_setting_changed`
+-> `clear_boxes`), and Off never adds a box by itself (`Session.detect_on_preview` adds none;
+before, a whole-bed box). A box drawn by hand in Off is still used (owner chose this);
+without one the whole bed is scanned (`_scan_area` None, `detect` returns the full image).
+
 ## Installer
 `packaging/build.py --python32 <32-bit Python with pytwain + pyinstaller>`:
 icon (`make_icon.py`) -> PyInstaller `hasami.spec` (onedir: `HasamiScan.exe`
