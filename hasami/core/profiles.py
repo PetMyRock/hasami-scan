@@ -104,6 +104,13 @@ class Profile:
     #: stack paper on their own: print on the top page leaves no edge where it stops.
     stack_by_segment: bool = False
     stack_segment_share: float = 0.25
+    #: A thick thin-paper stack in a 200 dpi preview: the sheets blur into one band with lower
+    #: pages' art columns, and the top page's edge is a clear line only next to those columns.
+    #: With ``stack_jump`` the chain's end moves in to a faint line along (nearly) the whole side
+    #: within ``stack_jump_mm`` when the strip outside it is darker than the paper inside it in
+    #: 75% of the segments and plain stack paper in ``stack_segment_share`` of them.
+    stack_jump: bool = False
+    stack_jump_mm: float = 8.0
 
     # ---- thick books on a light lid (thickbook.py) ----
     #: Fit a whole spread of a thick book (pages = the brightest plain surface).
@@ -124,7 +131,7 @@ PROFILES: dict[str, Profile] = {
     "epson-v600": replace(
         DEFAULT, name="epson-v600", label="Epson Perfection V600",
         match=(r"perfection\s*v600", r"\bgt-x820\b"),
-        min_edge_step=0.6, crease_step=True, fine_stack=True, stack_by_segment=True,
+        min_edge_step=0.6, crease_step=True, fine_stack=True, stack_by_segment=True, stack_jump=True,
         tuned_on="57 scans (booklet spreads, booklets too big for the bed, covers, prints), "
                  "26 thick-book spreads and 9 artboard pages with a thin page stack, Oct 2026"),
 }

@@ -179,6 +179,13 @@ own art column along ~half the side, plain paper elsewhere; the strip's median s
 column). Now also a stack gap when the inner line has >= 85% support and >= 25% of the segments
 pass the colour test alone (print on the top page leaves no edge where it stops). Case: owner's
 F:\JPG\Wrong crop (0023 whole bed, 0024 the bad crop); 57 + 26 + 9 unchanged case for case.
+0.5.7: `stack_jump` (`toppage._jump_stack`): 0.5.6 fixed only the scan-time refine; the 200 dpi
+PREVIEW box still sat on the green cover (owner saw it). At 200 dpi the 0.45 mm sheets blur into
+one band and the top page's edge is a layer line only next to the dark art column (9/16 < 60%).
+Now the chain's end moves in to the innermost faint (25th-percentile) line with >= 85% support
+within 8 mm when its outside 1.3 mm is darker than the paper inside in >= 75% of the segments and
+stack paper in >= 25% (a line printed on the top page has its own margin outside). Lesson: check
+the preview box AND the scan before calling a crop fixed.
 
 ## Per-scanner tuning
 Users ask for tuning on the Discord server (https://discord.gg/TAAV8B9WWg) and share scans (an empty bed and

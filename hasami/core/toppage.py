@@ -167,6 +167,37 @@ def _through_fine_stack(top, layer, s, xs, ys, step_mm: float, px_mm: float, sid
     return _walk(sorted(layer + extra, key=lambda t: t[0]), top, px_mm, s, X, Y)
 
 
+def _jump_stack(top, s, xs, ys, step_mm: float, px_mm: float, side_len: float, X, Y):
+    """The chain's end ``top`` moved in over a thick stack seen at low resolution (see
+    ``Profile.stack_jump``): to the innermost faint line along (nearly) the whole side within
+    ``stack_jump_mm`` whose outside (1.3 mm), segment by segment, is darker than the paper inside
+    it (lower pages, their art) and in some segments plain stack paper: a line printed on the top
+    page has the page's own margin outside it, a band printed along its edge no paper."""
+    prof = _profile()
+    lo = _layer_lines(_segment_peaks(s, xs, ys, step_mm, prof.fine_stack_percentile), px_mm, side_len)
+    cands = [ln for ln in lo if ln[2] >= 0.85 * prof.segments
+             and 0.3 * px_mm < top[0] - ln[0] <= prof.stack_jump_mm * px_mm
+             and ln[0] - 1.3 * px_mm > xs[0]]
+    rows = np.linspace(0, len(s), prof.segments + 1).astype(int)
+    for ln in sorted(cands, key=lambda t: t[0]):  # innermost first
+        darker = paper = 0
+        for r0, r1 in zip(rows[:-1], rows[1:]):
+            S_, X_, Y_ = s[r0:r1], X[r0:r1], Y[r0:r1]
+            near = (min(top[0], ln[0] + 1.3 * px_mm), ln[1])  # just outside: no top-page margin
+            band = _between(S_, X_, Y_, ln, near, 0.3 * px_mm)
+            inside = _between(S_, X_, Y_, (ln[0] - 1.3 * px_mm, ln[1]), ln, 0.3 * px_mm)
+            if band is None or inside is None or inside[0] < prof.light_paper_l:
+                continue
+            dL = inside[0] - band[0]
+            if dL >= prof.darker_l:
+                darker += 1
+                if dL <= prof.max_darker_l and np.hypot(*(inside[1:] - band[1:])) <= prof.max_hue_diff:
+                    paper += 1
+        if darker >= 0.75 * prof.segments and paper >= prof.stack_segment_share * prof.segments:
+            return ln
+    return top
+
+
 def _between(S: np.ndarray, X: np.ndarray, Y: np.ndarray, inner, outer, pad: float):
     """Median Lab colour of the strip between two lines (x0, slope at the side's middle), or None."""
     xi = inner[0] + inner[1] * Y + pad
@@ -427,6 +458,8 @@ def top_page(image: np.ndarray, box: CropBox, dpi: float, keep=(), rgb8: np.ndar
         top = _chain(layer, px_mm, s, X, Y, start_out)
         if top is not None and _profile().fine_stack:
             top = _through_fine_stack(top, layer, s, xs, ys, step / px_mm, px_mm, side_len, X, Y)
+        if top is not None and _profile().stack_jump:
+            top = _jump_stack(top, s, xs, ys, step / px_mm, px_mm, side_len, X, Y)
         if DEBUG is not None:
             DEBUG[key] = {"lines": [(round(x0 / px_mm, 2), round(b, 4), sup) for x0, b, sup in layer],
                           "top": None if top is None else (round(top[0] / px_mm, 2), round(top[1], 4))}
