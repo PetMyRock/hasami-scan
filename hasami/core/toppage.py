@@ -80,8 +80,9 @@ def _strip(rgb8: np.ndarray, a, e, d, n, px_mm: float, step_px: float, out_mm: f
     return xs, ys, s, valid.astype(np.float32)
 
 
-def _segment_peaks(s: np.ndarray, xs: np.ndarray, ys: np.ndarray, step_mm: float):
-    """Edge positions per segment: (x_px, y_px, strength) of gradient peaks of the median profile."""
+def _segment_peaks(s: np.ndarray, xs: np.ndarray, ys: np.ndarray, step_mm: float, percentile: float = 50.0):
+    """Edge positions per segment: (x_px, y_px, strength) of gradient peaks of the median profile
+    (above 3 x 1.5 x the gradient's median, or the given percentile of it)."""
     pts = []
     rows = np.array_split(np.arange(len(ys)), _profile().segments)
     sig = max(0.05 / step_mm, 0.7)
@@ -91,7 +92,7 @@ def _segment_peaks(s: np.ndarray, xs: np.ndarray, ys: np.ndarray, step_mm: float
         prof = np.median(s[r], axis=0)  # (nx, 3)
         sm = cv2.GaussianBlur(prof[None], (0, 0), sig)[0]
         g = np.sqrt((np.gradient(sm, axis=0) ** 2).sum(1)) / step_mm  # Lab units per mm
-        noise = np.median(g) * 1.5 + 1e-6
+        noise = (np.median(g) if percentile == 50.0 else np.percentile(g, percentile)) * 1.5 + 1e-6
         thr = max(6.0, 3.0 * noise)
         w = max(1, int(round(0.08 / step_mm)))
         for i in range(w, len(g) - w):
@@ -142,6 +143,30 @@ def _layer_lines(pts, px_mm: float, side_len: float):
     return sorted(lines, key=lambda t: t[0])
 
 
+def _through_fine_stack(top, layer, s, xs, ys, step_mm: float, px_mm: float, side_len: float, X, Y):
+    """The chain's end ``top`` moved on inwards over a thin page stack (see ``Profile.fine_stack``):
+    faint lines found with a lower threshold, used only as a run that starts at ``top`` (and ends
+    where three weakly supported lines follow each other: fine texture in dark print)."""
+    prof = _profile()
+    lo = sorted(_layer_lines(_segment_peaks(s, xs, ys, step_mm, prof.fine_stack_percentile), px_mm, side_len))
+    lo = [ln for ln in lo if ln[0] < top[0] - 0.3 * px_mm]  # inside the chain's end
+    run, weak = [], 0
+    strong = 0.85 * prof.segments  # a page edge runs along (nearly) the whole side
+    for ln in sorted(lo, key=lambda t: -t[0]):  # from the chain's end inwards
+        prev = run[-1][0] if run else top[0]
+        if prev - ln[0] > prof.fine_stack_gap_mm * px_mm:
+            break
+        weak = weak + 1 if ln[2] < strong else 0
+        run.append(ln)
+        if weak == 3:  # half-supported lines in a row: texture in the print, not page edges
+            del run[-3:]
+            break
+    if len(run) < prof.fine_stack_lines:
+        return top
+    extra = [ln for ln in run if all(abs(ln[0] - o[0]) > 0.3 * px_mm for o in layer)]
+    return _walk(sorted(layer + extra, key=lambda t: t[0]), top, px_mm, s, X, Y)
+
+
 def _between(S: np.ndarray, X: np.ndarray, Y: np.ndarray, inner, outer, pad: float):
     """Median Lab colour of the strip between two lines (x0, slope at the side's middle), or None."""
     xi = inner[0] + inner[1] * Y + pad
@@ -189,6 +214,20 @@ def _stack_goes_on(lines, ln, px_mm: float, n: int = 2) -> bool:
     return True
 
 
+def _walk(lines, cur, px_mm: float, S=None, X=None, Y=None):
+    """Follow the layer chain inwards from line ``cur``; its innermost line (see ``_chain``)."""
+    for ln in sorted((ln for ln in lines if ln[0] < cur[0]), key=lambda t: -t[0]):
+        gap = cur[0] - ln[0]
+        if gap > _profile().near_mm * px_mm:
+            if S is None or gap > _profile().wide_gap_mm * px_mm:
+                break
+            if not _stack_gap(S, X, Y, lines, ln, cur, px_mm, wide=gap > _profile().gap_mm * px_mm) and not (
+                    gap <= _profile().gap_mm * px_mm and _stack_goes_on(lines, ln, px_mm)):
+                break
+        cur = ln
+    return cur
+
+
 def _chain(lines, px_mm: float, S=None, X=None, Y=None, start_out: float | None = None):
     """Innermost line of the layer chain starting near the current side (x = 0), or None.
 
@@ -207,16 +246,8 @@ def _chain(lines, px_mm: float, S=None, X=None, Y=None, start_out: float | None 
         start = [ln for ln in lines if ln[0] < -_profile().start_in_mm * px_mm]
         if S is None or not start:
             return None
-    first = cur = max(start, key=lambda ln: ln[0])
-    for ln in sorted((ln for ln in lines if ln[0] < cur[0]), key=lambda t: -t[0]):
-        gap = cur[0] - ln[0]
-        if gap > _profile().near_mm * px_mm:
-            if S is None or gap > _profile().wide_gap_mm * px_mm:
-                break
-            if not _stack_gap(S, X, Y, lines, ln, cur, px_mm, wide=gap > _profile().gap_mm * px_mm) and not (
-                    gap <= _profile().gap_mm * px_mm and _stack_goes_on(lines, ln, px_mm)):
-                break
-        cur = ln
+    first = max(start, key=lambda ln: ln[0])
+    cur = _walk(lines, first, px_mm, S, X, Y)
     if far:
         shade = _between(S, X, Y, first, (0.0, first[1]), 0.3 * px_mm)
         paper = _between(S, X, Y, (cur[0] - 1.3 * px_mm, cur[1]), cur, 0.3 * px_mm)
@@ -237,8 +268,16 @@ def _crease(rgb8: np.ndarray, a, e, d, n, px_mm: float, step: float, reach_mm: f
     g = cv2.cvtColor(np.ascontiguousarray(rgb8), cv2.COLOR_RGB2GRAY)
     s = cv2.remap(g, (a[0] + n[0] * X + d[0] * Y).astype(np.float32),
                   (a[1] + n[1] * X + d[1] * Y).astype(np.float32), cv2.INTER_LINEAR).astype(np.float32)
+    if _profile().crease_step:
+        # the step up to the facing page is measured on a profile 2 mm wider each way (a valley
+        # at the window's edge has its facing page beyond it)
+        xw = np.arange(-(reach_mm + 2.0) * px_mm, (reach_mm + 2.0) * px_mm, step)
+        Xw, Yw = np.meshgrid(xw, ys)
+        sw = cv2.remap(g, (a[0] + n[0] * Xw + d[0] * Yw).astype(np.float32),
+                       (a[1] + n[1] * Xw + d[1] * Yw).astype(np.float32), cv2.INTER_LINEAR).astype(np.float32)
     step_mm = step / px_mm
     pts = []
+    stepped, moved = [], 0
     for rows in np.array_split(np.arange(len(ys)), _profile().segments):
         if len(rows) < 3:
             continue
@@ -246,18 +285,52 @@ def _crease(rgb8: np.ndarray, a, e, d, n, px_mm: float, step: float, reach_mm: f
         hp = pr - cv2.GaussianBlur(pr[None], (0, 0), 0.8 / step_mm)[0]
         hp = cv2.GaussianBlur(hp[None], (0, 0), max(0.05 / step_mm, 0.5))[0]
         i = int(np.argmin(hp))
-        pts.append((xs[i], float(ys[rows].mean()) - side_len / 2))
+        x = xs[i]
+        y = float(ys[rows].mean()) - side_len / 2
+        if _profile().crease_step:
+            iw = int(np.argmin(np.abs(xw - x)))
+            xw_ = _step_out(np.median(sw[rows], axis=0), xw, iw, px_mm)
+            moved += xw_ != xw[iw]
+            stepped.append((xw_ if xw_ != xw[iw] else x, y))
+        pts.append((x, y))
     if not pts:
         return None
+    tol = 0.3
+    if moved >= 0.5 * len(pts):
+        # A soft fold: most segments show only the step up to the facing page (less sharp).
+        pts, tol = stepped, _profile().crease_step_tol_mm
     P = np.array(pts)
     med = np.median(P[:, 0])
-    ok = np.abs(P[:, 0] - med) < 0.3 * px_mm
+    ok = np.abs(P[:, 0] - med) < tol * px_mm
     if ok.mean() < _profile().crease_support or ok.sum() < 4:
         return None
     b, x0 = np.polyfit(P[ok, 1], P[ok, 0], 1)
     if abs(b) > _profile().max_tilt:
         return None
     return float(x0), float(b)
+
+
+def _step_out(pr: np.ndarray, xs: np.ndarray, i: int, px_mm: float) -> float:
+    """``xs[i]`` (a crease valley in the grey profile ``pr``), or the half-way point of the step
+    up to the facing page when the valley is one-sided and broad: the page's own side stays dark
+    (print up to the fold) while the facing side rises clearly but slowly (gutter shading; a
+    crease line rises at once on both sides) (see ``Profile.crease_step``)."""
+    sm = cv2.GaussianBlur(pr[None], (0, 0), max(0.05 * px_mm / max(xs[1] - xs[0], 1e-9), 0.5))[0]
+    x = xs - xs[i]
+    inner = sm[(x >= -1.2 * px_mm) & (x <= -0.6 * px_mm)]
+    outer = sm[(x >= 0.8 * px_mm) & (x <= 1.6 * px_mm)]
+    if inner.size == 0 or outer.size == 0:
+        return float(xs[i])
+    near = sm[(x >= 0.2 * px_mm) & (x <= 0.4 * px_mm)]
+    v = float(sm[i])
+    rise_in, rise_out = float(np.median(inner)) - v, float(np.median(outer)) - v
+    if rise_out < max(30.0, 3.0 * rise_in):
+        return float(xs[i])
+    if near.size and float(np.median(near)) - v >= 0.4 * rise_out:
+        return float(xs[i])  # a sharp crease line (rises at once), not broad shading on the page
+    half = v + rise_out / 2.0
+    up = np.flatnonzero((x > 0) & (x <= 1.6 * px_mm) & (sm >= half))
+    return float(xs[up[0]]) if up.size else float(xs[i])
 
 
 def _line_of(box: CropBox, key):
@@ -337,6 +410,8 @@ def top_page(image: np.ndarray, box: CropBox, dpi: float, keep=(), rgb8: np.ndar
         layer = _layer_lines(pts, px_mm, side_len)
         X, Y = np.meshgrid(xs, ys - side_len / 2)
         top = _chain(layer, px_mm, s, X, Y, start_out)
+        if top is not None and _profile().fine_stack:
+            top = _through_fine_stack(top, layer, s, xs, ys, step / px_mm, px_mm, side_len, X, Y)
         if DEBUG is not None:
             DEBUG[key] = {"lines": [(round(x0 / px_mm, 2), round(b, 4), sup) for x0, b, sup in layer],
                           "top": None if top is None else (round(top[0] / px_mm, 2), round(top[1], 4))}

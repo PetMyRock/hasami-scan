@@ -64,7 +64,7 @@ separately.
 
 | Scanner | Status |
 |---|---|
-| **Epson Perfection V600** | Tuned: 57 real scans (booklet spreads, booklets too big for the bed, covers, prints) and 26 scans of a thick artbook all crop correctly. |
+| **Epson Perfection V600** | Tuned: 57 real scans (booklet spreads, booklets too big for the bed, covers, prints), 26 scans of a thick artbook and 9 pages of an artbook with a thin page stack all crop correctly. |
 | Epson Perfection V39 | Tuned on older scans (black bed and light lid). |
 | Other scanners | They work with the default profile, but auto-crop is not tuned for them yet. |
 
