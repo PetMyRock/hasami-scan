@@ -218,7 +218,7 @@ def test_a_box_drawn_by_hand_counts_with_auto_crop_off(tmp_path, bed):
     s.settings.crop.mode = "off"
     s.settings.input.scan_crop_area_only = True
     s.run_preview()
-    assert len(s.boxes_mm) == 1 and not s.boxes_mm[0].manual  # auto-crop off: the whole bed
+    assert s.boxes_mm == []  # auto-crop off: no box at all (owner, 0.5.4)
     drawn = CropBox.from_xywh(40.0, 30.0, 50.0, 20.0, manual=True)
     s.boxes_mm.append(drawn)
     assert s._scan_area() == pytest.approx((37.0, 27.0, 56.0, 26.0), abs=0.6)  # the drawn box + 3 mm
@@ -226,3 +226,14 @@ def test_a_box_drawn_by_hand_counts_with_auto_crop_off(tmp_path, bed):
     h, w = oc.items[0].shape[:2]
     assert len(oc.items) == 1  # only the drawn box, not also the whole bed
     assert abs(w - 50 / 25.4 * 150) <= 2 and abs(h - 20 / 25.4 * 150) <= 2
+
+
+def test_auto_crop_off_scans_the_whole_bed_without_boxes(tmp_path, bed):
+    s = _session(tmp_path, bed, "only")
+    s.settings.crop.mode = "off"
+    s.run_preview()
+    assert s.boxes_mm == [] and s._scan_area() is None  # whole bed
+    (oc,) = s.run_scan(save=False)
+    (item,) = oc.items  # one image: the whole bed
+    bed_w, bed_h = s.open().capabilities().max_area_mm
+    assert abs(item.shape[1] - bed_w / 25.4 * 150) <= 3 and abs(item.shape[0] - bed_h / 25.4 * 150) <= 3

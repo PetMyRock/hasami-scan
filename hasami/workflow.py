@@ -128,11 +128,13 @@ class Session:
         return self.preview
 
     def detect_on_preview(self) -> list[CropBox]:
-        """(Re)run auto-crop on the current preview, keeping manual boxes."""
+        """(Re)run auto-crop on the current preview, keeping manual boxes.  With auto-crop off no
+        box is added (the whole bed is scanned unless a box is drawn by hand)."""
         if self.preview is None:
             return []
         p = self.preview
-        found = autocrop.detect(p.image, self.crop_settings(), dpi=p.dpi)
+        off = self.settings.crop.mode == "off"
+        found = [] if off else autocrop.detect(p.image, self.crop_settings(), dpi=p.dpi)
         origin = (p.area_mm[0], p.area_mm[1])
         manual = [b for b in self.boxes_mm if b.manual]
         self.boxes_mm = manual + [box_px_to_mm(b, p.dpi, origin) for b in found]
@@ -152,10 +154,8 @@ class Session:
 
     # --------------------------------------------------------------- scan
     def _crop_boxes(self) -> list[CropBox]:
-        """The boxes a scan is cropped to.  Any box counts, also with auto-crop off;
-        then boxes drawn by hand replace the whole-bed box auto-crop "off" puts there."""
-        if self.settings.crop.mode == "off" and any(b.manual for b in self.boxes_mm):
-            return [b for b in self.boxes_mm if b.manual]
+        """The boxes a scan is cropped to (also boxes drawn by hand with auto-crop off; none:
+        the whole bed)."""
         return list(self.boxes_mm)
 
     def _scan_area(self) -> tuple[float, float, float, float] | None:

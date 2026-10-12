@@ -468,3 +468,19 @@ def test_skew_field_turns_the_selected_crop_box(tmp_path):
     win.clear_boxes()
     assert not skew.isEnabled()
     _done(app, win)
+
+
+def test_turning_auto_crop_off_removes_every_box(tmp_path):
+    # Owner: switching auto-crop off deletes all crop boxes (drawn ones too); Off adds none.
+    import numpy as np
+    from hasami.core.geometry import CropBox
+    app, win = _window(tmp_path)
+    win.settings.crop.mode = "multi"
+    win.preview.set_image(np.full((300, 400, 3), 200, np.uint8))
+    win.preview.set_boxes([CropBox(100, 100, 80, 60), CropBox(300, 200, 60, 40, manual=True)])
+    win.on_boxes_edited()
+    win.settings.crop.mode = "off"
+    win.on_setting_changed("crop", "mode")
+    assert win.preview.boxes() == [] and win.session.boxes_mm == []
+    assert not win.panel.skew.isEnabled()
+    _done(app, win)
