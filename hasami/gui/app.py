@@ -555,6 +555,8 @@ class MainWindow(QMainWindow):
         if (section, name) == ("crop", "rotate"):
             self.preview.set_rotation(self.settings.crop.rotate)
             return
+        if (section, name) == ("crop", "mode") and self.settings.crop.mode == "off":
+            self.clear_boxes()  # owner: turning auto-crop off removes every box, drawn ones too
         if section == "crop" and self.session.preview is not None:
             # Re-detect with the new settings (boxes drawn by hand are kept).
             self._redetect_timer.start()
