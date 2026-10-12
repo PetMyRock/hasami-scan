@@ -203,6 +203,10 @@ flag as normal scans; saved UNCROPPED and UNTURNED (scanner frame: no `--turn` n
 benchmark) as TIFF `output.test_prefix` + number in `output.test_folder`. Preview and boxes
 are kept (live view fills in the whole bed, `end_live` restores them). File menu "Open test
 scan folder". Owner sends these when a crop is wrong.
+0.5.9: a new Preview keeps only boxes DRAWN from scratch (`meta["drawn"]`, set in
+`PreviewView` when a box is dragged out); auto-crop boxes are replaced even when edited
+(drag / Skew made them `manual`, and before they came back on the next page - owner, after
+fixing a box and pressing Test scan). Auto-crop on the same preview still keeps edits.
 
 ## Ideas not done yet
 - Code signing (unsigned installers show SmartScreen's warning).
