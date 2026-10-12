@@ -175,7 +175,7 @@ def _through_strong_lines(top, s, xs, ys, step_mm: float, px_mm: float, side_len
     the thresholds rise with the stack lines and art columns in the strip and miss them.  Noise
     does not line up in 85% of the segments, so they come from a still lower threshold.  Print has
     such lines as well (masked edges, streaks), so a gap to one is crossed only when its strip looks
-    like stack paper, or when it is close (<= near_mm) and more such lines follow at stack spacing
+    like stack paper, or when it is close (<= near_mm) and another line follows within gap_mm
     (a lower page's narrow art column; a white band of the top page before its art's straight
     edge has none: KLK 0022).  A wider gap is never crossed because more lines follow (masked
     streaks in the top page's art lie at stack spacing too).  A plain lower sheet
@@ -193,7 +193,8 @@ def _through_strong_lines(top, s, xs, ys, step_mm: float, px_mm: float, side_len
             break
         paper = _stack_gap(s, X, Y, lines, ln, top, px_mm, wide=gap > prof.gap_mm * px_mm,
                            darker=prof.strong_darker_l)
-        if not paper and not (gap <= prof.near_mm * px_mm and _stack_goes_on(found, ln, px_mm, n=1)):
+        if not paper and not (gap <= prof.near_mm * px_mm
+                              and _stack_goes_on(found, ln, px_mm, n=1, spacing_mm=prof.gap_mm)):
             break
         top = ln
         ends.append(ln)
@@ -287,12 +288,13 @@ def _paper_gap(S, X, Y, near, ln, cur, px_mm: float, wide: bool, darker: float |
     return False
 
 
-def _stack_goes_on(lines, ln, px_mm: float, n: int = 2) -> bool:
+def _stack_goes_on(lines, ln, px_mm: float, n: int = 2, spacing_mm: float | None = None) -> bool:
     """More page edges follow inside ``ln`` at stack spacing (lower pages with coloured edges:
     print along the top page's edge is not followed by a row of lines)."""
     x = ln[0]
+    spacing = (_profile().near_mm if spacing_mm is None else spacing_mm) * px_mm
     for _ in range(n):
-        nxt = [o for o in lines if 0 < x - o[0] <= _profile().near_mm * px_mm]
+        nxt = [o for o in lines if 0 < x - o[0] <= spacing]
         if not nxt:
             return False
         x = max(o[0] for o in nxt)
