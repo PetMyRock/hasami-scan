@@ -96,6 +96,14 @@ class Profile:
     fine_stack_percentile: float = 25.0
     fine_stack_gap_mm: float = 0.8
     fine_stack_lines: int = 5
+    #: A lower page sticking out further than its neighbours shows a strip of its own art (full
+    #: bleed) in parts of the side and plain paper elsewhere; the strip's median colour then sits
+    #: on the "too dark: print" limit and a pixel decides (KLK artboard, a crop from the app).
+    #: With ``stack_by_segment`` such a gap is also chained when its inner line is a page edge
+    #: along (nearly) the whole side and at least ``stack_segment_share`` of the segments look like
+    #: stack paper on their own: print on the top page leaves no edge where it stops.
+    stack_by_segment: bool = False
+    stack_segment_share: float = 0.25
 
     # ---- thick books on a light lid (thickbook.py) ----
     #: Fit a whole spread of a thick book (pages = the brightest plain surface).
@@ -116,7 +124,7 @@ PROFILES: dict[str, Profile] = {
     "epson-v600": replace(
         DEFAULT, name="epson-v600", label="Epson Perfection V600",
         match=(r"perfection\s*v600", r"\bgt-x820\b"),
-        min_edge_step=0.6, crease_step=True, fine_stack=True,
+        min_edge_step=0.6, crease_step=True, fine_stack=True, stack_by_segment=True,
         tuned_on="57 scans (booklet spreads, booklets too big for the bed, covers, prints), "
                  "26 thick-book spreads and 9 artboard pages with a thin page stack, Oct 2026"),
 }

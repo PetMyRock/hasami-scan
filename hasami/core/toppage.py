@@ -183,10 +183,25 @@ def _stack_gap(S, X, Y, lines, ln, cur, px_mm: float, wide: bool) -> bool:
     the page edge (a coloured band, a frame) differs in hue or is much darker.  The paper is
     sampled just inside ``ln``, or inside a line right next to it (``ln`` can be the far side of a
     thin dark stripe: the printed edge of a lower page)."""
+    near = [ln] + [o for o in lines if 0 < ln[0] - o[0] <= _profile().gap_mm * px_mm]
+    if _paper_gap(S, X, Y, near, ln, cur, px_mm, wide):
+        return True
+    prof = _profile()
+    if not prof.stack_by_segment or ln[2] < 0.85 * prof.segments:
+        return False
+    # A lower page's art in parts of the strip, plain stack paper in the others (see
+    # ``Profile.stack_by_segment``): count the segments that look like stack paper on their own.
+    rows = np.linspace(0, len(S), prof.segments + 1).astype(int)
+    paper = sum(_paper_gap(S[r0:r1], X[r0:r1], Y[r0:r1], near, ln, cur, px_mm, wide)
+                for r0, r1 in zip(rows[:-1], rows[1:]))
+    return paper >= prof.stack_segment_share * prof.segments
+
+
+def _paper_gap(S, X, Y, near, ln, cur, px_mm: float, wide: bool) -> bool:
+    """The colour test of ``_stack_gap`` (``S``, ``X``, ``Y`` may be some rows of the strip)."""
     band = _between(S, X, Y, ln, cur, 0.3 * px_mm)
     if band is None:
         return False
-    near = [ln] + [o for o in lines if 0 < ln[0] - o[0] <= _profile().gap_mm * px_mm]
     for c in near:
         inside = _between(S, X, Y, (c[0] - 1.3 * px_mm, c[1]), (c[0], c[1]), 0.3 * px_mm)
         if inside is None:
