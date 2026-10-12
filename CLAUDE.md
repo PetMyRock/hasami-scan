@@ -186,6 +186,22 @@ Now the chain's end moves in to the innermost faint (25th-percentile) line with 
 within 8 mm when its outside 1.3 mm is darker than the paper inside in >= 75% of the segments and
 stack paper in >= 25% (a line printed on the top page has its own margin outside). Lesson: check
 the preview box AND the scan before calling a crop fixed.
+0.5.10 (owner's test scans `New data`, 10 pages of the same book, stacks ~10-12 mm deep):
+`depth_mm` 14 with `layer_depth_mm` 10 (the usual rules see exactly the old 10 mm columns - a
+deeper strip shifted the Hough bins and the noise level and moved unrelated sides by ~1 mm;
+`_strip` adds the deeper columns in front) and `fine_strong_lines` (`_through_strong_lines` on
+the 14 mm strip: lines with >= 85% support from a 10th-percentile threshold; a gap is crossed
+when its strip passes `_stack_gap` (wide gaps need only `strong_darker_l` 1 L darker: a plain
+lower sheet), or when <= near_mm and one more line follows (a lower page's narrow art column),
+never because lines follow across a wider gap (masked streaks in art); only with a strong line
+outside the start (a stack, not a cover on the lid), and it must end in front of light paper
+(L >= 70) or it backs up). Crease (all profiles): samples outside the image are ignored - the
+app's crop-area scan ends 3 mm past the box, at the end of the crease search, and the black
+beyond looked like a valley (0004: fold 2.4 mm into the facing page). Benchmark: scenario `app`
+(preview -> crop-area scan + 3 mm -> refine) and `max_dpi` per record (test scans scored at
+400 dpi). New data 30/30 within 1 mm (was 76% within 0.5 mm, worst 5.2 mm); 57 + 26 + 9 only
+better (V600 0003, 0008; KLK 0017). Leftovers: folds 0.5-0.9 mm short on soft/broad creases
+(0002, 0004 via the preview, 0007).
 
 ## Per-scanner tuning
 Users ask for tuning on the Discord server (https://discord.gg/TAAV8B9WWg) and share scans (an empty bed and

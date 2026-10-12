@@ -178,3 +178,23 @@ def test_page_order_follows_the_turned_preview():
     st.booklet_rtl = True
     rtl = detect(sc.image, st, dpi=200)
     assert rtl[0].cy < rtl[1].cy
+
+
+def test_crease_is_not_taken_at_the_image_edge():
+    # The app scans only the crop area + 3 mm: the image ends inside the crease search.  Black
+    # beyond the image looked like a valley and the fold moved 3 mm out (owner's test scan 0004).
+    from hasami.core.geometry import CropBox
+    from hasami.core.toppage import top_page
+
+    mm = 300 / 25.4
+    rng = np.random.default_rng(0)
+    x_side = int(90 * mm)
+    w = x_side + int(round(2.4 * mm))
+    crease = x_side - int(round(0.6 * mm))
+    shade = 40 * np.exp(-((np.arange(w) - crease) / (0.15 * mm)) ** 2)
+    img = (np.full((int(110 * mm), w, 3), 228.0) - shade[None, :, None])
+    img = np.clip(img + rng.normal(0, 1.5, img.shape), 0, 255).astype(np.uint8)
+    box = CropBox.from_xywh(int(10 * mm), int(10 * mm), x_side - int(10 * mm), int(90 * mm))
+    out, _ = top_page(img, box, 300, keep=[(0, 1)])
+    assert abs((out.bounding_rect()[2] - crease) / mm) < 0.2
+

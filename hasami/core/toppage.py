@@ -68,7 +68,10 @@ def _strip(rgb8: np.ndarray, a, e, d, n, px_mm: float, step_px: float, out_mm: f
     +out_mm; L is -1 outside the image.  Only the strip is converted (scans are big)."""
     out_mm = _profile().out_mm if out_mm is None else out_mm
     L = float(np.linalg.norm(e - a))
-    xs = np.arange(-_profile().depth_mm * px_mm, out_mm * px_mm, step_px)
+    base = _profile().layer_depth_mm or _profile().depth_mm
+    xs = np.arange(-base * px_mm, out_mm * px_mm, step_px)
+    more = int(max(0.0, _profile().depth_mm - base) * px_mm / step_px)
+    xs = np.concatenate([xs[0] - step_px * np.arange(more, 0, -1), xs])  # same columns as before
     ys = np.arange(0.06 * L, 0.94 * L, step_px)
     X, Y = np.meshgrid(xs, ys)
     mx = (a[0] + n[0] * X + d[0] * Y).astype(np.float32)
@@ -161,10 +164,46 @@ def _through_fine_stack(top, layer, s, xs, ys, step_mm: float, px_mm: float, sid
         if weak == 3:  # half-supported lines in a row: texture in the print, not page edges
             del run[-3:]
             break
-    if len(run) < prof.fine_stack_lines:
-        return top
-    extra = [ln for ln in run if all(abs(ln[0] - o[0]) > 0.3 * px_mm for o in layer)]
-    return _walk(sorted(layer + extra, key=lambda t: t[0]), top, px_mm, s, X, Y)
+    if len(run) >= prof.fine_stack_lines:
+        extra = [ln for ln in run if all(abs(ln[0] - o[0]) > 0.3 * px_mm for o in layer)]
+        top = _walk(sorted(layer + extra, key=lambda t: t[0]), top, px_mm, s, X, Y)
+    return top
+
+
+def _through_strong_lines(top, s, xs, ys, step_mm: float, px_mm: float, side_len: float, X, Y):
+    """Faint lines along (nearly) the whole side are page edges too (``Profile.fine_strong_lines``):
+    the thresholds rise with the stack lines and art columns in the strip and miss them.  Noise
+    does not line up in 85% of the segments, so they come from a still lower threshold.  Print has
+    such lines as well (masked edges, streaks), so a gap to one is crossed only when its strip looks
+    like stack paper, or when it is close (<= near_mm) and more such lines follow at stack spacing
+    (a lower page's narrow art column; a white band of the top page before its art's straight
+    edge has none: KLK 0022).  A wider gap is never crossed because more lines follow (masked
+    streaks in the top page's art lie at stack spacing too).  A plain lower sheet
+    just outside the top page is only 1.5-2 L* darker (``strong_darker_l``); print on the top page
+    has the page's own paper outside it (0)."""
+    prof = _profile()
+    found = _layer_lines(_segment_peaks(s, xs, ys, step_mm, prof.fine_strong_percentile), px_mm, side_len)
+    lines = [ln for ln in found if ln[2] >= 0.85 * prof.segments]  # the chain lands on these only
+    if not any(ln[0] > top[0] + 0.3 * px_mm for ln in lines):
+        return top  # nothing outside: the paper's edge on the lid (a cover), not inside a stack
+    start, ends = top, [top]
+    for ln in sorted((ln for ln in lines if ln[0] < top[0] - 0.3 * px_mm), key=lambda t: -t[0]):
+        gap = top[0] - ln[0]
+        if gap > prof.wide_gap_mm * px_mm:
+            break
+        paper = _stack_gap(s, X, Y, lines, ln, top, px_mm, wide=gap > prof.gap_mm * px_mm,
+                           darker=prof.strong_darker_l)
+        if not paper and not (gap <= prof.near_mm * px_mm and _stack_goes_on(found, ln, px_mm, n=1)):
+            break
+        top = ln
+        ends.append(ln)
+    # It ends in front of light paper (thin white sheets before a light page); else back to the
+    # last line that does, or where it started (dark covers and dark paper: the usual rules).
+    for ln in reversed(ends[1:]):
+        inside = _between(s, X, Y, (ln[0] - 1.3 * px_mm, ln[1]), ln, 0.3 * px_mm)
+        if inside is not None and inside[0] >= prof.light_paper_l:
+            return ln
+    return start
 
 
 def _jump_stack(top, s, xs, ys, step_mm: float, px_mm: float, side_len: float, X, Y):
@@ -206,7 +245,7 @@ def _between(S: np.ndarray, X: np.ndarray, Y: np.ndarray, inner, outer, pad: flo
     return np.median(S[m], axis=0) if m.sum() > 50 else None
 
 
-def _stack_gap(S, X, Y, lines, ln, cur, px_mm: float, wide: bool) -> bool:
+def _stack_gap(S, X, Y, lines, ln, cur, px_mm: float, wide: bool, darker: float | None = None) -> bool:
     """Is the strip between lines ``ln`` (inner) and ``cur`` (outer) part of the page stack?
 
     The pages under the top one show their edges or a few mm of plain paper: about the colour of
@@ -215,7 +254,7 @@ def _stack_gap(S, X, Y, lines, ln, cur, px_mm: float, wide: bool) -> bool:
     sampled just inside ``ln``, or inside a line right next to it (``ln`` can be the far side of a
     thin dark stripe: the printed edge of a lower page)."""
     near = [ln] + [o for o in lines if 0 < ln[0] - o[0] <= _profile().gap_mm * px_mm]
-    if _paper_gap(S, X, Y, near, ln, cur, px_mm, wide):
+    if _paper_gap(S, X, Y, near, ln, cur, px_mm, wide, darker):
         return True
     prof = _profile()
     if not prof.stack_by_segment or ln[2] < 0.85 * prof.segments:
@@ -223,12 +262,12 @@ def _stack_gap(S, X, Y, lines, ln, cur, px_mm: float, wide: bool) -> bool:
     # A lower page's art in parts of the strip, plain stack paper in the others (see
     # ``Profile.stack_by_segment``): count the segments that look like stack paper on their own.
     rows = np.linspace(0, len(S), prof.segments + 1).astype(int)
-    paper = sum(_paper_gap(S[r0:r1], X[r0:r1], Y[r0:r1], near, ln, cur, px_mm, wide)
+    paper = sum(_paper_gap(S[r0:r1], X[r0:r1], Y[r0:r1], near, ln, cur, px_mm, wide, darker)
                 for r0, r1 in zip(rows[:-1], rows[1:]))
     return paper >= prof.stack_segment_share * prof.segments
 
 
-def _paper_gap(S, X, Y, near, ln, cur, px_mm: float, wide: bool) -> bool:
+def _paper_gap(S, X, Y, near, ln, cur, px_mm: float, wide: bool, darker: float | None = None) -> bool:
     """The colour test of ``_stack_gap`` (``S``, ``X``, ``Y`` may be some rows of the strip)."""
     band = _between(S, X, Y, ln, cur, 0.3 * px_mm)
     if band is None:
@@ -243,7 +282,7 @@ def _paper_gap(S, X, Y, near, ln, cur, px_mm: float, wide: bool) -> bool:
             continue
         if not wide and dL >= -_profile().lighter_l:
             return True
-        if wide and inside[0] >= _profile().light_paper_l and dL >= _profile().darker_l:
+        if wide and inside[0] >= _profile().light_paper_l and dL >= (_profile().darker_l if darker is None else darker):
             return True
     return False
 
@@ -312,15 +351,22 @@ def _crease(rgb8: np.ndarray, a, e, d, n, px_mm: float, step: float, reach_mm: f
     ys = np.arange(0.15 * side_len, 0.85 * side_len, step)
     X, Y = np.meshgrid(xs, ys)
     g = cv2.cvtColor(np.ascontiguousarray(rgb8), cv2.COLOR_RGB2GRAY)
-    s = cv2.remap(g, (a[0] + n[0] * X + d[0] * Y).astype(np.float32),
-                  (a[1] + n[1] * X + d[1] * Y).astype(np.float32), cv2.INTER_LINEAR).astype(np.float32)
+    mx, my = (a[0] + n[0] * X + d[0] * Y).astype(np.float32), (a[1] + n[1] * X + d[1] * Y).astype(np.float32)
+    s = cv2.remap(g, mx, my, cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE).astype(np.float32)
+    # Columns outside the image are no crease (the app scans only the crop area + 3 mm: black
+    # beyond the image's edge looked like a valley at the end of the search).
+    H, W = g.shape
+    inside = ((mx >= 0) & (mx <= W - 1) & (my >= 0) & (my <= H - 1)).all(axis=0)
+    inside = cv2.erode(inside.astype(np.uint8)[None], np.ones((1, 2 * int(0.5 * px_mm / step) + 1), np.uint8),
+                       borderType=cv2.BORDER_REPLICATE)[0].astype(bool)
     if _profile().crease_step:
         # the step up to the facing page is measured on a profile 2 mm wider each way (a valley
         # at the window's edge has its facing page beyond it)
         xw = np.arange(-(reach_mm + 2.0) * px_mm, (reach_mm + 2.0) * px_mm, step)
         Xw, Yw = np.meshgrid(xw, ys)
         sw = cv2.remap(g, (a[0] + n[0] * Xw + d[0] * Yw).astype(np.float32),
-                       (a[1] + n[1] * Xw + d[1] * Yw).astype(np.float32), cv2.INTER_LINEAR).astype(np.float32)
+                       (a[1] + n[1] * Xw + d[1] * Yw).astype(np.float32), cv2.INTER_LINEAR,
+                       borderMode=cv2.BORDER_REPLICATE).astype(np.float32)
     step_mm = step / px_mm
     pts = []
     stepped, moved = [], 0
@@ -330,7 +376,9 @@ def _crease(rgb8: np.ndarray, a, e, d, n, px_mm: float, step: float, reach_mm: f
         pr = np.median(s[rows], axis=0)
         hp = pr - cv2.GaussianBlur(pr[None], (0, 0), 0.8 / step_mm)[0]
         hp = cv2.GaussianBlur(hp[None], (0, 0), max(0.05 / step_mm, 0.5))[0]
-        i = int(np.argmin(hp))
+        if not inside.any():
+            continue
+        i = int(np.argmin(np.where(inside, hp, np.inf)))
         x = xs[i]
         y = float(ys[rows].mean()) - side_len / 2
         if _profile().crease_step:
@@ -448,8 +496,12 @@ def top_page(image: np.ndarray, box: CropBox, dpi: float, keep=(), rgb8: np.ndar
                 lines[key] = (a + d * (side_len / 2) + n * cr[0], dd / np.linalg.norm(dd))
                 shifts[key] = cr[0] / px_mm
             continue
-        xs, ys, s, valid = _strip(rgb8, a, e, d, n, px_mm, step, max(_profile().out_mm, start_out + 0.4))
-        if valid.mean() < 0.9:
+        xs_d, ys, s_d, valid = _strip(rgb8, a, e, d, n, px_mm, step, max(_profile().out_mm, start_out + 0.4))
+        # The usual rules see the strip to layer_depth_mm (as before a deeper strip existed); only
+        # the strong-line pass looks deeper (Profile.depth_mm: thick stacks of thin sheets).
+        near = xs_d >= -(_profile().layer_depth_mm or _profile().depth_mm) * px_mm - step / 2
+        xs, s = xs_d[near], s_d[:, near]
+        if valid[:, near].mean() < 0.9:
             continue  # the side runs off the image
         side_len = float(np.linalg.norm(e - a))
         pts = _segment_peaks(s, xs, ys, step / px_mm)
@@ -458,6 +510,9 @@ def top_page(image: np.ndarray, box: CropBox, dpi: float, keep=(), rgb8: np.ndar
         top = _chain(layer, px_mm, s, X, Y, start_out)
         if top is not None and _profile().fine_stack:
             top = _through_fine_stack(top, layer, s, xs, ys, step / px_mm, px_mm, side_len, X, Y)
+        if top is not None and _profile().fine_strong_lines:
+            Xd, Yd = np.meshgrid(xs_d, ys - side_len / 2)
+            top = _through_strong_lines(top, s_d, xs_d, ys, step / px_mm, px_mm, side_len, Xd, Yd)
         if top is not None and _profile().stack_jump:
             top = _jump_stack(top, s, xs, ys, step / px_mm, px_mm, side_len, X, Y)
         if DEBUG is not None:

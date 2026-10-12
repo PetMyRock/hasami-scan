@@ -111,6 +111,17 @@ class Profile:
     #: 75% of the segments and plain stack paper in ``stack_segment_share`` of them.
     stack_jump: bool = False
     stack_jump_mm: float = 8.0
+    #: Thick stacks of thin sheets: the top page's edge lay 10.4 mm inside a preview box, beyond
+    #: ``depth_mm``.  With ``layer_depth_mm`` (> 0) the usual rules keep seeing the strip only to
+    #: that depth (exactly the same columns, so nothing else moves), and ``depth_mm`` deeper is
+    #: seen only by the strong-line pass (``fine_strong_lines``).
+    layer_depth_mm: float = 0.0
+    #: ``fine_stack``'s faint lines along (nearly) the whole side (>= 85% of the segments) join
+    #: the chain on their own, not only as a run of close sheets (a single white sheet 2 mm wide
+    #: before the top page, its edge a clear line that the raised threshold missed).
+    fine_strong_lines: bool = False
+    fine_strong_percentile: float = 10.0
+    strong_darker_l: float = 1.0  # a wider gap to such a line: its strip this much darker than the paper
 
     # ---- thick books on a light lid (thickbook.py) ----
     #: Fit a whole spread of a thick book (pages = the brightest plain surface).
@@ -131,7 +142,8 @@ PROFILES: dict[str, Profile] = {
     "epson-v600": replace(
         DEFAULT, name="epson-v600", label="Epson Perfection V600",
         match=(r"perfection\s*v600", r"\bgt-x820\b"),
-        min_edge_step=0.6, crease_step=True, fine_stack=True, stack_by_segment=True, stack_jump=True,
+        min_edge_step=0.6, crease_step=True, fine_stack=True, stack_by_segment=True, stack_jump=True, depth_mm=14.0, layer_depth_mm=10.0,
+        fine_strong_lines=True,
         tuned_on="57 scans (booklet spreads, booklets too big for the bed, covers, prints), "
                  "26 thick-book spreads and 9 artboard pages with a thin page stack, Oct 2026"),
 }

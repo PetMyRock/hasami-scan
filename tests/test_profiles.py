@@ -11,7 +11,8 @@ def test_v600_profile_differs_from_the_default_only_in_its_own_switches():
     # The default started as a copy of the V600's tuned values; behaviour added for the V600 later
     # (KLK artboard, Oct 2026) is switched on only in its profile, so other scanners are unchanged.
     ident = {"name", "label", "match", "tuned_on"}
-    own = {"min_edge_step", "crease_step", "fine_stack", "stack_by_segment", "stack_jump"}
+    own = {"min_edge_step", "crease_step", "fine_stack", "stack_by_segment", "stack_jump", "depth_mm",
+           "layer_depth_mm", "fine_strong_lines"}
     v600, default = profiles.get("epson-v600"), profiles.DEFAULT
     for f in dataclasses.fields(profiles.Profile):
         if f.name not in ident | own:
@@ -191,6 +192,54 @@ def test_v600_profile_crops_a_thick_stack_off_in_a_preview(monkeypatch):
     with profiles.use("far"):
         out, _ = top_page(img, box, 200, keep=keep)
     assert abs((out.bounding_rect()[0] - x0) / mm) < 0.4
+
+
+def _thick_thin_stack(seed: int = 0):
+    """A stack of thin sheets ~12 mm deep (owner's test scans, KLK artboard): a thin green cover,
+    sheets 0.5 mm apart with lower pages' art columns, then one plain white sheet 2.2 mm wide
+    before the top page; the box side lies on the cover (a 200 dpi preview cut nothing)."""
+    from hasami.core.geometry import CropBox
+
+    mm = 300 / 25.4
+    rng = np.random.default_rng(seed)
+    img = np.full((int(120 * mm), int(130 * mm), 3), 200, np.uint8)
+    x0, y0, x1, y1 = int(40 * mm), int(10 * mm), int(120 * mm), int(110 * mm)
+    h = y1 - y0
+    img[y0:y1, x0:x1] = 240
+    last = x0 - int(round(2.2 * mm))
+    img[y0:y1, last:x0] = 236
+    st = last - int(round(9.5 * mm))
+    img[y0:y1, st:last] = 234
+    for k in range(1, 19):
+        xa = last - int(round(k * 0.5 * mm))
+        img[y0:y1, xa:xa + 2] = 205
+    for a, b, r0, r1, v in ((1.0, 0.0, 0.1, 0.6, 70), (4.0, 2.6, 0.3, 0.9, 110), (7.5, 6.5, 0.0, 0.5, 80)):
+        img[y0 + int(r0 * h):y0 + int(r1 * h), last - int(round(a * mm)):last - int(round(b * mm))] = v
+    img[y0:y1, last:last + 2] = 200
+    img[y0:y1, x0:x0 + 2] = 196
+    img[y0:y1, st - int(0.6 * mm):st] = (60, 160, 130)
+    img = np.clip(img + rng.normal(0, 1.5, img.shape), 0, 255).astype(np.uint8)
+    box = CropBox.from_xywh(st - int(0.6 * mm), y0, x1 - st + int(0.6 * mm), y1 - y0)
+    return img, box, x0, mm
+
+
+def test_v600_profile_reaches_the_top_page_past_a_thick_thin_stack(monkeypatch):
+    # Deeper than the 10 mm strip, and the last sheet's edge is missed by the usual thresholds
+    # (they rise with all the stack lines): the strong-line pass on a 14 mm strip finds it.
+    from hasami.core.toppage import top_page
+
+    img, box, x0, mm = _thick_thin_stack()
+    keep = [(0, 1), (1, -1), (1, 1)]
+    v600 = profiles.get("epson-v600")
+    monkeypatch.setitem(profiles.PROFILES, "before", dataclasses.replace(
+        v600, name="before", fine_strong_lines=False, depth_mm=10.0, layer_depth_mm=0.0))
+    found = {}
+    for name in ("before", "epson-v600"):
+        with profiles.use(name):
+            out, _ = top_page(img, box, 300, keep=keep)
+        found[name] = (out.bounding_rect()[0] - x0) / mm
+    assert found["before"] < -2.0, found
+    assert abs(found["epson-v600"]) < 0.4, found
 
 
 def test_v600_profile_finds_a_soft_fold():
