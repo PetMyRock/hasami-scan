@@ -11,14 +11,14 @@ def test_v600_profile_differs_from_the_default_only_in_its_own_switches():
     # The default started as a copy of the V600's tuned values; behaviour added for the V600 later
     # (KLK artboard, Oct 2026) is switched on only in its profile, so other scanners are unchanged.
     ident = {"name", "label", "match", "tuned_on"}
-    own = {"min_edge_step", "crease_step", "fine_stack", "stack_by_segment"}
+    own = {"min_edge_step", "crease_step", "fine_stack", "stack_by_segment", "stack_jump"}
     v600, default = profiles.get("epson-v600"), profiles.DEFAULT
     for f in dataclasses.fields(profiles.Profile):
         if f.name not in ident | own:
             assert getattr(v600, f.name) == getattr(default, f.name), f.name
     assert default.min_edge_step == 0.0 and not default.crease_step and not default.fine_stack
     assert v600.min_edge_step > 0 and v600.crease_step and v600.fine_stack and v600.stack_by_segment
-    assert not default.stack_by_segment
+    assert not default.stack_by_segment and not default.stack_jump and v600.stack_jump
 
 
 def test_profile_from_the_scanner_name():
@@ -138,6 +138,59 @@ def test_v600_profile_leaves_a_lower_pages_art_column_out():
     with profiles.use("epson-v600"):
         out, _ = top_page(img, box, 300, keep=[(0, 1), (1, -1), (1, 1)])
     assert (out.bounding_rect()[0] - x0) / mm < -1.4
+
+
+def _thick_stack_preview(seed: int = 0):
+    """200 dpi preview of a thick thin-paper stack: green cover, sheets blurred into one band,
+    lower pages' art columns at different heights, a dark column next to the top page along half
+    of it (elsewhere the top page's edge is only a faint step; KLK artboard preview)."""
+    import cv2
+
+    from hasami.core.geometry import CropBox
+
+    mm = 200 / 25.4
+    rng = np.random.default_rng(seed)
+    img = np.full((int(120 * mm), int(120 * mm), 3), 200, np.uint8)
+    x0, y0, x1, y1 = int(30 * mm), int(10 * mm), int(110 * mm), int(110 * mm)
+    h = y1 - y0
+    img[y0:y1, x0:x1] = 236
+    st = x0 - int(round(6.5 * mm))
+    img[y0:y1, st:x0] = 222
+    for k in range(int(6.5 / 0.45)):
+        img[y0:y1, st + int(round(k * 0.45 * mm))] = 212
+    for a, b, r0, r1, v in ((4.6, 3.8, 0.1, 0.5, 90), (3.6, 2.4, 0.3, 0.8, 140), (2.2, 1.3, 0.55, 0.95, 70)):
+        img[y0 + int(r0 * h):y0 + int(r1 * h), x0 - int(round(a * mm)):x0 - int(round(b * mm))] = v
+    img[y0:y0 + int(0.55 * h), x0 - int(round(1.2 * mm)):x0] = 70
+    img[y0:y1, st - int(1.5 * mm):st] = (60, 160, 130)
+    img = cv2.GaussianBlur(img, (0, 0), 0.9)
+    img = np.clip(img + rng.normal(0, 1.5, img.shape), 0, 255).astype(np.uint8)
+    box = CropBox.from_xywh(st - int(1.5 * mm), y0, x1 - st + int(1.5 * mm), y1 - y0)
+    return img, box, x0, mm
+
+
+def test_v600_profile_crops_a_thick_stack_off_in_a_preview(monkeypatch):
+    from hasami.core.toppage import top_page
+
+    img, box, x0, mm = _thick_stack_preview()
+    keep = [(0, 1), (1, -1), (1, 1)]
+    v600 = profiles.get("epson-v600")
+    monkeypatch.setitem(profiles.PROFILES, "no-jump", dataclasses.replace(v600, name="no-jump", stack_jump=False))
+    monkeypatch.setitem(profiles.PROFILES, "far", dataclasses.replace(v600, name="far", stack_jump_mm=12.0))
+    found = {}
+    for name in ("no-jump", "epson-v600"):
+        with profiles.use(name):
+            out, _ = top_page(img, box, 200, keep=keep)
+        found[name] = (out.bounding_rect()[0] - x0) / mm
+    assert found["no-jump"] < -6.0  # the whole stack and the cover stay
+    assert abs(found["epson-v600"]) < 0.4, found
+    # A line printed on the top page inside its edge (in reach): its outside is the page's own
+    # margin, not lower pages, so the crop does not jump to it.
+    img[:, x0 + int(1.5 * mm):x0 + int(1.5 * mm) + 2] = 120
+    img[:int(10 * mm)] = 200
+    img[int(110 * mm):] = 200
+    with profiles.use("far"):
+        out, _ = top_page(img, box, 200, keep=keep)
+    assert abs((out.bounding_rect()[0] - x0) / mm) < 0.4
 
 
 def test_v600_profile_finds_a_soft_fold():
