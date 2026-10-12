@@ -124,6 +124,9 @@ class Session:
         inp = self.settings.input
         req = ScanRequest(dpi=inp.preview_dpi, mode="color", source=inp.source, preview=True, live=self.live)
         self.preview = dev.scan(req, progress, cancel)
+        # A new preview (usually the next page): boxes auto-crop found are replaced, also when
+        # edited by hand (dragged, Skew); only boxes drawn from scratch stay.
+        self.boxes_mm = [b for b in self.boxes_mm if b.meta.get("drawn")]
         self.detect_on_preview()
         return self.preview
 

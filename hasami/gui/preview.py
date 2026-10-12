@@ -642,6 +642,7 @@ class PreviewView(QGraphicsView):
             w, h = abs(p1.x() - p0.x()), abs(p1.y() - p0.y())
             if w > 6 and h > 6:
                 box = CropBox.from_xywh(min(p0.x(), p1.x()), min(p0.y(), p1.y()), w, h, manual=True)
+                box.meta["drawn"] = True  # drawn from scratch: kept by the next preview
                 if getattr(self, "_drawing", None) is None:
                     self._drawing = self._add_item(box)
                     self._drawing.setSelected(True)
