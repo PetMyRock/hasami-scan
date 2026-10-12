@@ -35,10 +35,20 @@ class OutputSettings:
     #: colour processing, as a TIFF at the scanner's bit depth.  "off", "only"
     #: (instead of the processed file) or "also" (next to it, ``*_raw.tif``).
     raw_file: str = "off"
+    #: Test scans (the "Test scan" button): the whole bed at ``test_dpi``, uncropped and
+    #: unprocessed, as a TIFF in their own folder with their own name - scans to send for tuning
+    #: when the auto-crop got something wrong.
+    test_folder: str = "~/Pictures/Scans/Test scans"
+    test_prefix: str = "test"
+    test_dpi: int = 400
 
     @property
     def path(self) -> Path:
         return Path(self.folder).expanduser()
+
+    @property
+    def test_path(self) -> Path:
+        return Path(self.test_folder).expanduser()
 
 
 def normalise_format(fmt: str) -> str:

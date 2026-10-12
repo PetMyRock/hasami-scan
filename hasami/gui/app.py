@@ -171,6 +171,10 @@ class MainWindow(QMainWindow):
         self.a_open = act("Open image...", self.open_image, "Ctrl+O", "Auto-crop an existing scan")
         self.a_preview = act("Preview", self.do_preview, "Ctrl+P")
         self.a_scan = act("Scan", self.do_scan, "Ctrl+S")
+        self.a_test = act("Test scan", self.do_test_scan, "Ctrl+T",
+                          "Scan the whole bed at the test resolution (Output tab), ignoring the crops, "
+                          "and save it uncropped to the test scan folder: test data for when the "
+                          "auto-crop got something wrong")
         self.a_autocrop = act("Auto-crop", self.redetect, "Ctrl+R", "Detect crop boxes again (keeps boxes you drew)")
         self.a_clear = act("Clear crops", self.clear_boxes)
         self.a_delete = act("Delete crop", self.preview.delete_selected, "Del")
@@ -183,8 +187,11 @@ class MainWindow(QMainWindow):
         self.a_rot_right = act("Rotate right", lambda: self.rotate(1), "Ctrl+]",
                                "Turn the preview and the saved scans 90° clockwise")
         self.a_folder = act("Open output folder", self.open_output_folder)
+        self.a_test_folder = act("Open test scan folder", self.open_test_folder)
         for a in (self.a_open, self.a_preview, self.a_scan, self.a_autocrop, self.a_delete, self.a_clear):
             tb.addAction(a)
+        tb.addSeparator()
+        tb.addAction(self.a_test)
         colour = self.palette().color(QPalette.ButtonText)
         for a, kind in ((self.a_rot_left, "rotate_left"), (self.a_rot_right, "rotate_right"),
                         (self.a_zoom_out, "zoom_out"), (self.a_zoom_in, "zoom_in"), (self.a_fit, "fit")):
@@ -200,11 +207,12 @@ class MainWindow(QMainWindow):
         m = self.menuBar().addMenu("&File")
         m.addAction(self.a_open)
         m.addAction(self.a_folder)
+        m.addAction(self.a_test_folder)
         m.addSeparator()
         m.addAction(act("Save settings", lambda: save_settings(self.settings)))
         m.addAction(act("Quit", self.close, "Ctrl+Q"))
         m = self.menuBar().addMenu("&Scan")
-        for a in (self.a_preview, self.a_scan, self.a_autocrop, self.a_delete, self.a_clear):
+        for a in (self.a_preview, self.a_scan, self.a_test, self.a_autocrop, self.a_delete, self.a_clear):
             m.addAction(a)
         m = self.menuBar().addMenu("&View")
         for a in (self.a_rot_left, self.a_rot_right, self.a_zoom_in, self.a_zoom_out, self.a_fit):
@@ -327,7 +335,7 @@ class MainWindow(QMainWindow):
     def _busy(self, busy: bool, label: str = "") -> None:
         for w in (self.preview_btn, self.scan_btn):
             w.setEnabled(not busy)
-        for a in (self.a_preview, self.a_scan, self.a_open):
+        for a in (self.a_preview, self.a_scan, self.a_test, self.a_open):
             a.setEnabled(not busy)
         self.progress.setVisible(busy)
         self.cancel_btn.setVisible(busy)
@@ -375,7 +383,7 @@ class MainWindow(QMainWindow):
         """Callback for :attr:`Session.live`, or None.  It runs in the scan thread:
         it shrinks the strips received so far to preview size and hands them on."""
         prev = self.session.preview
-        if not self.settings.input.live_view or (kind == "scan" and prev is None):
+        if not self.settings.input.live_view or (kind in ("scan", "test") and prev is None):
             return None
         import cv2
 
@@ -445,7 +453,7 @@ class MainWindow(QMainWindow):
         if first:
             # One crop box: only that box, turned straight (VueScan); several: the area.
             crops = self.session._crop_boxes()
-            box = box_mm_to_px(crops[0], p.dpi, p.area_mm[:2]) if len(crops) == 1 else None
+            box = box_mm_to_px(crops[0], p.dpi, p.area_mm[:2]) if len(crops) == 1 and kind == "scan" else None
             self.preview.live_area(x, y, w * k, h * k, zoom=True, box=box)
         self.preview.show_live(part, x, y, k / shrink)
 
@@ -590,6 +598,29 @@ class MainWindow(QMainWindow):
         # The next preview should look for new items.
         self.session.boxes_mm = [b for b in self.session.boxes_mm if b.manual]
 
+    def do_test_scan(self) -> None:
+        """The whole bed at the test resolution, saved uncropped to the test scan folder."""
+        if self.session.preview is not None:
+            self.session.set_preview_boxes_px(self.preview.boxes())  # kept for the next scan
+        self.session.live = self._live_fn("test")
+        self._live_started = False
+        self._run(f"Test scan ({self.settings.output.test_dpi} dpi, whole bed)...",
+                  lambda p, c, s: self.session.run_test_scan(p, c, s), self._test_scan_done)
+
+    def _test_scan_done(self, out) -> None:
+        result, path = out
+        self.preview.end_live()  # the preview and its crops back
+        pm = QPixmap.fromImage(to_qimage(result.image)).scaled(220, 220, Qt.KeepAspectRatio,
+                                                               Qt.SmoothTransformation)
+        it = QListWidgetItem(QIcon(pm), path.name)
+        it.setData(Qt.UserRole, str(path))
+        it.setToolTip(str(path))
+        self.results.insertItem(0, it)
+        self.set_status(f"Saved test scan {path.name} to {path.parent} "
+                        f"({result.area_mm[2]:.0f} x {result.area_mm[3]:.0f} mm at {result.dpi:.0f} dpi)")
+        if result.note:
+            QMessageBox.warning(self, "Hasami Scan", result.note)
+
     # ----------------------------------------------------------------- misc
     def open_image(self) -> None:
         f, _ = QFileDialog.getOpenFileName(self, "Open scan", str(Path.home()), IMAGE_FILTER)
@@ -611,6 +642,11 @@ class MainWindow(QMainWindow):
 
     def open_output_folder(self) -> None:
         path = self.settings.output.path
+        path.mkdir(parents=True, exist_ok=True)
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(path)))
+
+    def open_test_folder(self) -> None:
+        path = self.settings.output.test_path
         path.mkdir(parents=True, exist_ok=True)
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(path)))
 
