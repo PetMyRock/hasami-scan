@@ -52,6 +52,11 @@ also work. Licence MIT (GPL-3.0 until 0.5.2). Python package `hasami`, distribut
 - `hasami/core/thickbook.py`: `fit_spread` for thick books on a light lid
   (black bed -> None); robust per-page lines, validation (inliers >= 0.5, rms
   <= 0.6 mm, pages >= 2 mm from the border); wins when it answers.
+- `hasami/core/candidates.py`: context-local collector (`collecting()`); `toppage.top_page` records each
+  side (frame, line pools layer / faint / strong, the rules' choice and rule, crease, off-image) and
+  `_refine_edges` its profile peaks. Off = no cost, no change. `linescore.py`: mm-based strip patches
+  (16 segments x 64 x 0.1 mm, coarse 32 x 0.5 mm, Lab + inside flag) and features of a candidate: the
+  learned line classifier's input (training data built in the private data repo).
 - Booklet options: `crop.booklet_output` "pages" | "spread" (union of both
   pages), `crop.booklet_rtl` (right page first, as seen after `crop.rotate`).
 - `hasami/core/geometry.py` (CropBox: angle in (-45, 45], positive = clockwise
@@ -257,6 +262,8 @@ scan folder". Owner sends these when a crop is wrong.
 fixing a box and pressing Test scan). Auto-crop on the same preview still keeps edits.
 
 ## Next: learned cropping (planned, owner approved Oct 13 2026)
+0.5.12: candidate collector and patch/feature extraction (no crop changes); dataset + baseline in
+hasami-data benchmarks/learned.
 Start here after 0.5.11. Two steps, each compared against the current rules on the same benchmarks
 before anything replaces them:
 1. **Line classifier** (first). Most real-scan failures are one judgement: which candidate line is
