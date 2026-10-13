@@ -13,7 +13,7 @@ def test_v600_profile_differs_from_the_default_only_in_its_own_switches():
     ident = {"name", "label", "match", "tuned_on"}
     own = {"min_edge_step", "crease_step", "fine_stack", "stack_by_segment", "stack_jump", "depth_mm",
            "layer_depth_mm", "fine_strong_lines", "shrink_lid_hue", "walk_after_passes",
-           "cover_rim", "paper_colour_edges", "lid_all_round_split_score"}
+           "cover_rim", "paper_colour_edges", "lid_all_round_split_score", "stack_shadow_l"}
     v600, default = profiles.get("epson-v600"), profiles.DEFAULT
     for f in dataclasses.fields(profiles.Profile):
         if f.name not in ident | own:
@@ -447,4 +447,42 @@ def test_v600_profile_walks_on_after_the_faint_line_passes(monkeypatch):
             out, _ = top_page(img, box, 300, keep=[(0, 1), (1, -1), (1, 1)])
         found[name] = (out.bounding_rect()[0] - x0) / mm
     assert found["before"] < -0.7, found
+    assert abs(found["epson-v600"]) < 0.3, found
+
+
+def _shadowed_sheet(seed: int = 0):
+    """A white top page with a lower sheet 1.3 mm wide beyond its edge, neutral but ~17 L* darker
+    (further from the glass under a propped lid), then four thin sheets 0.4 mm apart."""
+    from hasami.core.geometry import CropBox
+
+    mm = 300 / 25.4
+    rng = np.random.default_rng(seed)
+    img = np.full((int(120 * mm), int(130 * mm), 3), 170, np.float32)
+    x0, y0, x1, y1 = int(40 * mm), int(10 * mm), int(120 * mm), int(110 * mm)
+    img[y0:y1, x0:x1] = 242
+    sheet = x0 - int(round(1.3 * mm))
+    img[y0:y1, sheet:x0] = 196
+    out = sheet
+    for k in range(1, 5):
+        out = sheet - int(round(k * 0.4 * mm))
+        img[y0:y1, out:out + int(round(0.4 * mm))] = 196 - 4 * k
+        img[y0:y1, out:out + 1] = 166
+    img[y0:y1, x0 - 1:x0 + 1] = 171
+    img = np.clip(img + rng.normal(0, 1.5, img.shape), 0, 255).astype(np.uint8)
+    return img, CropBox.from_xywh(out, y0, x1 - out, y1 - y0), x0, mm
+
+
+def test_v600_profile_crosses_a_lower_sheet_in_the_lids_shadow(monkeypatch):
+    # V600 stacks under a propped lid: the sheet just below the top page sticks out 1-2 mm and is
+    # 16-19 L* darker, neutral; the 15 L* limit took it for print and the crop kept it.
+    from hasami.core.toppage import top_page
+
+    img, box, x0, mm = _shadowed_sheet()
+    _with(monkeypatch, stack_shadow_l=0.0)
+    found = {}
+    for name in ("before", "epson-v600"):
+        with profiles.use(name):
+            out, _ = top_page(img, box, 300, keep=[(0, 1), (1, -1), (1, 1)])
+        found[name] = (out.bounding_rect()[0] - x0) / mm
+    assert found["before"] < -1.0, found
     assert abs(found["epson-v600"]) < 0.3, found
