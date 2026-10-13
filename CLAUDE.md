@@ -254,6 +254,46 @@ scan folder". Owner sends these when a crop is wrong.
 (drag / Skew made them `manual`, and before they came back on the next page - owner, after
 fixing a box and pressing Test scan). Auto-crop on the same preview still keeps edits.
 
+## Next: learned cropping (planned, owner approved Oct 13 2026)
+Start here after 0.5.11. Two steps, each compared against the current rules on the same benchmarks
+before anything replaces them:
+1. **Line classifier** (first). Most real-scan failures are one judgement: which candidate line is
+   the top page's edge: a stack sheet, a lower page's art column, a cover rim, a printed line, a lid
+   shadow. Hand rules are at their limit: in 0.5.11 two V600 switches each fixed one case and broke
+   another and were dropped. The engine already produces the candidates: `toppage.top_page` (layer
+   lines per side: `_layer_lines`, then `_chain` / `_walk` and the faint-line passes) and the edge
+   refinement (`autocrop._fit_side`, `_pick_edge`). Learn a scorer on a small strip patch around each
+   candidate (e.g. ~6 mm across x the side's length, resampled), keeping the rules as a fallback.
+   Training data: every marked side gives one positive (the truth line) and several negatives (the
+   other candidates): about 500 sides from the real scans below, plus the synthetic generators
+   (`hasami/demo.py`, `demo_anime.py`, `synth_booklet`) with heavy augmentation.
+2. **Segmentation model** (then). At preview resolution (200 dpi): top page / page stack / cover /
+   lid, the classical code fitting the edges. The final edge stays with the sub-pixel refinement:
+   0.5 mm is ~3 px at 200 dpi, beyond a whole-bed network's resolution.
+
+Deployment: ONNX Runtime on CPU (~15-20 MB more in the installer; check its licence and the
+model's for MIT compatibility). Training needs no GPU at this size. The scans and their truth stay
+private (hasami-data); whether to ship weights trained on them is the owner's call. Tests in this
+repo must keep using generated scans only. Do it behind a profile switch first (V600), like the rules.
+
+Data and benchmarks (all on the maintainer's machine):
+- Private data repo `F:\HasamiData` (github PetMyRock/hasami-data): truth in
+  `benchmarks/real_booklets_proposals.json` (records: `outline`, `pages` as `[cx, cy, w, h, angle]`,
+  `dpi`, `group`, optional `max_dpi`, `output`), tools per batch in `benchmarks/klk6`, `newdata`,
+  `newdata2` (READMEs there explain how truth was read).
+- Scans: `F:\ScannerTraining\Training booklets` (read only: V600 Scans 57, `Thick books` 26 beside it),
+  `F:\JPG` (KLK Vol.6 artboard, 9), `E:\New data` (owner's test scans 0001-0035, unturned).
+- Runner: `python F:/HasamiData/benchmarks/real_booklets.py "F:/ScannerTraining/Training booklets"
+  --only "V600 Scans" --scenarios real,preview --turn 0 --profile epson-v600 --jobs 2 --out OUT`
+  (code under test via `PYTHONPATH`; groups "V600 Scans", "Thick books", "Kill la kill" at `--turn 0`
+  and `-1`; the test scans with `--only "New data" --scenarios real,preview,app --turn 0`: `app` is
+  the app's own path, preview -> crop-area scan + 3 mm -> refine). Always `--jobs 2`.
+- Compare: `benchmarks/klk6/side_mm.py OUT/results.json` (signed mm per side), `side_diff.py OLD NEW`
+  and `compare.py OLD NEW` (run with `PYTHONPATH=F:/HasamiData/benchmarks/klk6`). Judge sides in mm
+  (within 0.5 / 1 mm), not only IoU >= 0.95; check the bare 200 dpi preview box too (the owner sees it).
+- Current V600 state (0.5.11): all 57 + 26 + 9 + 33 pass; test scans 85% of sides within 0.5 mm, all
+  within 1 mm. Known leftovers to beat: see the 0.5.10 and 0.5.11 notes in "Scanner profiles".
+
 ## Ideas not done yet
 - Code signing (unsigned installers show SmartScreen's warning).
 - Synthetic horizontal booklets: a blank page margin at the image edge is taken
