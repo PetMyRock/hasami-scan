@@ -249,6 +249,15 @@ def _plain_strip(a: _Analysis, box: CropBox, key: Side, shift: float, max_edges:
     return True
 
 
+def _lid_coloured(a: _Analysis, p0: np.ndarray, p1: np.ndarray, n: np.ndarray, shift: float, outer: float) -> bool:
+    """Is the strip from ``shift`` out to ``outer`` the lid's colour (a*b* within ``shrink_lid_hue``)?"""
+    d = np.hypot(a.lab[:, :, 1] - a.bg_lab[1], a.lab[:, :, 2] - a.bg_lab[2]).astype(np.float32)
+    D, _, _ = _sample_side(d, p0, p1, n, shift, outer, trim=0.05)
+    with _quiet():
+        med = np.nanmedian(D) if D.size else np.nan
+    return bool(np.isnan(med) or med <= profiles.current().shrink_lid_hue)
+
+
 def _trim_protrusions(fg: np.ndarray, box: CropBox, min_cover: float = 0.6,
                       keep: set[Side] | frozenset = frozenset(), a: _Analysis | None = None) -> CropBox:
     """Pull in sides that the foreground covers along only part of their length.
@@ -389,6 +398,8 @@ def _shrink_to_paper_edges(a: _Analysis, box: CropBox, keep: set[Side] | frozens
         # propped-up lid leaves are not print.
         plain = shift < -3.0 and shift + 4.0 < outer and _plain_strip(a, box, (axis, sign), shift + 4.0, outer=outer,
                                                                        lines_ok=True)
+        if plain and profiles.current().shrink_lid_hue > 0:
+            plain = _lid_coloured(a, p0, p1, n, shift + 4.0, outer)
         if DEBUG is not None:
             DEBUG.setdefault("shrink", []).append(dict(side=(axis, sign), shift=shift, plain=plain, straight=bool(hits.size),
                                                        border=border))

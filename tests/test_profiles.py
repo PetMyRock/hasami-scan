@@ -12,7 +12,8 @@ def test_v600_profile_differs_from_the_default_only_in_its_own_switches():
     # (KLK artboard, Oct 2026) is switched on only in its profile, so other scanners are unchanged.
     ident = {"name", "label", "match", "tuned_on"}
     own = {"min_edge_step", "crease_step", "fine_stack", "stack_by_segment", "stack_jump", "depth_mm",
-           "layer_depth_mm", "fine_strong_lines"}
+           "layer_depth_mm", "fine_strong_lines", "shrink_lid_hue", "walk_after_passes",
+           "cover_rim", "paper_colour_edges", "lid_all_round_split_score"}
     v600, default = profiles.get("epson-v600"), profiles.DEFAULT
     for f in dataclasses.fields(profiles.Profile):
         if f.name not in ident | own:
@@ -175,8 +176,12 @@ def test_v600_profile_crops_a_thick_stack_off_in_a_preview(monkeypatch):
     img, box, x0, mm = _thick_stack_preview()
     keep = [(0, 1), (1, -1), (1, 1)]
     v600 = profiles.get("epson-v600")
-    monkeypatch.setitem(profiles.PROFILES, "no-jump", dataclasses.replace(v600, name="no-jump", stack_jump=False))
-    monkeypatch.setitem(profiles.PROFILES, "far", dataclasses.replace(v600, name="far", stack_jump_mm=12.0))
+    monkeypatch.setitem(profiles.PROFILES, "no-jump", dataclasses.replace(v600, name="no-jump", stack_jump=False,
+                                                                                     cover_rim=False))
+    # (cover_rim off: once the chain starts inside the cover band, any chain crosses a paper-coloured
+    # gap <= gap_mm, here to the printed line; this test is about the jump)
+    monkeypatch.setitem(profiles.PROFILES, "far", dataclasses.replace(v600, name="far", stack_jump_mm=12.0,
+                                                                      cover_rim=False))
     found = {}
     for name in ("no-jump", "epson-v600"):
         with profiles.use(name):
@@ -280,3 +285,166 @@ def test_paper_edge_needs_a_real_step_with_min_step():
         p0, p1, n = np.array([50.0, 150.0]), np.array([350.0, 150.0]), np.array([0.0, 1.0])
         assert _edge_reach(a, p0, p1, n, w, h)[0]  # any step above the (tiny) noise
         assert _edge_reach(a, p0, p1, n, w, h, min_step=0.6)[0] == strong
+
+
+# ---- owner's second batch of test scans (Oct 13 2026): a KLK artboard page on its green cover,
+# covers on the lid, thick stacks of thin sheets ----
+
+def _with(monkeypatch, **changes):
+    """The V600 profile with some switches changed, as profile "before"."""
+    monkeypatch.setitem(profiles.PROFILES, "before", dataclasses.replace(profiles.get("epson-v600"), name="before",
+                                                                         **changes))
+
+
+def _sides_mm(box, truth, mm):
+    return [(v - t) / mm for v, t in zip(box.bounding_rect(), truth)]
+
+
+def _page_on_green_cover(seed: int = 0):
+    """A booklet page above its facing hard cover, plain green, that runs off the bed, with a lighter
+    sheen line across it."""
+    mm = 200 / 25.4
+    rng = np.random.default_rng(seed)
+    img = np.empty((int(297 * mm), int(216 * mm), 3), np.float32)
+    img[:] = (170, 170, 165)
+    x0, x1, y0, fold = int(30 * mm), int(170 * mm), int(25 * mm), int(205 * mm)
+    yy, xx = np.mgrid[y0:fold, x0:x1]
+    art = 120 + 60 * np.sin(xx / 37.0) * np.cos(yy / 23.0)
+    img[y0:fold, x0:x1] = np.stack([art + 40, art, art - 20], -1)
+    img[fold:, x0 - 3:x1 + 3] = (80, 170, 140)
+    sheen = fold + int(25 * mm)
+    img[sheen:sheen + int(3 * mm), x0 - 3:x1 + 3] = (110, 195, 168)
+    img[fold - 2:fold + 1, x0:x1] = 60
+    img = np.clip(img + rng.normal(0, 1.5, img.shape), 0, 255).astype(np.uint8)
+    return img, (x0, y0, x1, fold), mm
+
+
+def _whole_bed_shrink(img, dpi, names):
+    """``_shrink_to_paper_edges`` from a box over the whole bed (a propped lid made the lid model
+    see everything as foreground), per profile."""
+    from hasami.core.autocrop import _coarse_detect, _working_image
+    from hasami.core.booklet import _shrink_to_paper_edges
+    from hasami.core.geometry import CropBox
+
+    st = AutoCropSettings(mode="booklet")
+    small, scale = _working_image(img, st.work_size)
+    a = _coarse_detect(small, scale, st, dpi, "single", band_frac=0.006, require_uniform=False, surface="border",
+                       drop_edge_slivers=True).analysis
+    whole = CropBox.from_xywh(0, 0, small.shape[1], small.shape[0])
+    out = {}
+    for name in names:
+        with profiles.use(name):
+            out[name] = [v / scale for v in _shrink_to_paper_edges(a, whole).bounding_rect()]
+    return out
+
+
+def test_v600_profile_keeps_a_coloured_cover_out_of_the_lid_shrink(monkeypatch):
+    # The lid-shadow shrink took the uniform green cover for shadow and its sheen line for the
+    # booklet's end: no spine, the box ran into the cover.  Only lid-coloured strips are given up.
+    img, (x0, y0, x1, fold), mm = _page_on_green_cover()
+    _with(monkeypatch, shrink_lid_hue=0.0)
+    bottom = {k: v[3] / mm for k, v in _whole_bed_shrink(img, 200, ("before", "epson-v600")).items()}
+    assert bottom["before"] < img.shape[0] / mm - 30, bottom  # at the sheen line
+    assert bottom["epson-v600"] > img.shape[0] / mm - 1, bottom  # the cover runs off the bed
+
+
+def _orange_cover(seed: int = 0):
+    """An orange cover on the grey lid: ~9 L* brighter than the lid but far more colourful; white
+    printed panels and a drawn line 1.1 mm inside the right edge along part of it."""
+    mm = 200 / 25.4
+    rng = np.random.default_rng(seed)
+    img = np.empty((int(297 * mm), int(216 * mm), 3), np.float32)
+    img[:] = (170, 170, 165)
+    x0, y0, x1, y1 = int(30 * mm), int(40 * mm), int(178 * mm), int(250 * mm)
+    img[y0:y1, x0:x1] = (250, 172, 112)
+    for a, b, c, d in ((40, 60, 100, 120), (110, 60, 160, 115), (60, 130, 120, 190)):
+        img[int(b * mm):int(d * mm), int(a * mm):int(c * mm)] = (238, 232, 222)
+    xl = x1 - int(round(1.1 * mm))
+    img[int(100 * mm):int(190 * mm), xl - 2:xl + 1] = (150, 105, 80)
+    img = np.clip(img + rng.normal(0, 1.5, img.shape), 0, 255).astype(np.uint8)
+    return img, (x0, y0, x1, y1), mm
+
+
+def test_v600_profile_finds_a_coloured_covers_faint_edge(monkeypatch):
+    # Orange on grey is a weak step in luminance: the edge refinement took the drawn line inside.
+    # Orange paper on both sides of that step: the paper goes on, the edge is further out.
+    img, truth, mm = _orange_cover()
+    _with(monkeypatch, paper_colour_edges=0.0)
+    found = {}
+    for name in ("before", "epson-v600"):
+        out = detect(img, AutoCropSettings(mode="booklet", profile=name, margin_mm=0.0), dpi=200)
+        assert len(out) == 1
+        found[name] = _sides_mm(out[0], truth, mm)
+    assert found["before"][2] < -0.8, found
+    assert max(abs(v) for v in found["epson-v600"]) < 0.4, found
+
+
+def _cover_rim(seed: int = 0):
+    """A hard cover's green rim 1.2 mm wide between the lid and the top page."""
+    from hasami.core.geometry import CropBox
+
+    mm = 300 / 25.4
+    rng = np.random.default_rng(seed)
+    img = np.full((int(120 * mm), int(130 * mm), 3), 200, np.float32)
+    x0, y0, x1, y1 = int(30 * mm), int(10 * mm), int(120 * mm), int(110 * mm)
+    rim = x0 - int(round(1.2 * mm))
+    img[y0 - 8:y1 + 8, rim:x1] = (55, 150, 120)
+    img[y0:y1, x0:x1] = 238
+    img[y0 + int(20 * mm):y1 - int(20 * mm), x0 + int(6 * mm):x1 - int(10 * mm)] = (120, 80, 70)
+    img = np.clip(img + rng.normal(0, 1.5, img.shape), 0, 255).astype(np.uint8)
+    return img, CropBox.from_xywh(rim, y0, x1 - rim, y1 - y0), x0, mm
+
+
+def test_v600_profile_crops_a_cover_rim_off(monkeypatch):
+    from hasami.core.toppage import top_page
+
+    img, box, x0, mm = _cover_rim()
+    _with(monkeypatch, cover_rim=False)
+    found = {}
+    for name in ("before", "epson-v600"):
+        with profiles.use(name):
+            out, _ = top_page(img, box, 300, keep=[(0, 1), (1, -1), (1, 1)])
+        found[name] = (out.bounding_rect()[0] - x0) / mm
+    assert found["before"] < -1.0, found
+    assert abs(found["epson-v600"]) < 0.3, found
+
+
+def _stack_then_column(seed: int = 0):
+    """~8 mm of thin white sheets 0.3 mm apart with two lower pages' art columns, then a lower page's
+    dark art column 0.8 mm wide right before the top page's art, which runs to its edge."""
+    from hasami.core.geometry import CropBox
+
+    mm = 300 / 25.4
+    rng = np.random.default_rng(seed)
+    img = np.full((int(120 * mm), int(130 * mm), 3), 200, np.float32)
+    x0, y0, x1, y1 = int(40 * mm), int(10 * mm), int(120 * mm), int(110 * mm)
+    h = y1 - y0
+    img[y0:y1, x0:x1] = (150, 110, 90)
+    col = x0 - int(round(0.8 * mm))
+    img[y0:y1, col:x0] = (75, 45, 40)
+    st = col - int(round(8.0 * mm))
+    img[y0:y1, st:col] = 232
+    for k in np.arange(0.0, 8.0, 0.3):
+        xa = col - int(round(k * mm))
+        img[y0:y1, xa - 1:xa + 1] = 205
+    for a, b, r0, r1, v in ((2.7, 2.2, 0.0, 0.7, 80), (5.0, 4.4, 0.3, 1.0, 95)):
+        img[y0 + int(r0 * h):y0 + int(r1 * h), col - int(round(a * mm)):col - int(round(b * mm))] = v
+    img[y0:y1, st - int(0.6 * mm):st] = (60, 160, 130)
+    img = np.clip(img + rng.normal(0, 1.5, img.shape), 0, 255).astype(np.uint8)
+    return img, CropBox.from_xywh(st - int(0.6 * mm), y0, x1 - st + int(0.6 * mm), y1 - y0), x0, mm
+
+
+def test_v600_profile_walks_on_after_the_faint_line_passes(monkeypatch):
+    # The faint-line passes carried the chain through the white sheets; the last 0.8 mm (a lower
+    # page's art column) is one more page edge <= near_mm away.
+    from hasami.core.toppage import top_page
+
+    img, box, x0, mm = _stack_then_column()
+    _with(monkeypatch, walk_after_passes=False)
+    found = {}
+    for name in ("before", "epson-v600"):
+        with profiles.use(name):
+            out, _ = top_page(img, box, 300, keep=[(0, 1), (1, -1), (1, 1)])
+        found[name] = (out.bounding_rect()[0] - x0) / mm
+    assert found["before"] < -0.7, found
+    assert abs(found["epson-v600"]) < 0.3, found
