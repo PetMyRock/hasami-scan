@@ -25,6 +25,7 @@ import math
 import cv2
 import numpy as np
 
+from . import candidates
 from .geometry import CropBox
 from .profiles import current as _profile  # tuned numbers: the scanner's profile
 
@@ -492,6 +493,21 @@ def box_from_lines(lines: dict, confidence: float = 1.0) -> CropBox:
                    confidence=confidence)
 
 
+def _record(key, rgb8, box, dpi, a, e, d, n, *, kept=False, spine=False, crease=None, pools=None,
+            chosen=None, rule=None, skipped=None) -> None:
+    """One side for ``candidates`` (positions: px at the side's middle, + = outwards)."""
+    side_len = float(np.linalg.norm(e - a))
+    candidates.record(kind="toppage", key=tuple(key), image=rgb8, dpi=float(dpi),
+                      box=[box.cx, box.cy, box.w, box.h, box.angle], mid=(a + d * side_len / 2).tolist(),
+                      d=d.tolist(), n=n.tolist(), side_len=side_len, kept=kept, spine=spine, crease=crease,
+                      pools=pools or {}, chosen=chosen, rule=rule, skipped=skipped)
+
+
+def _moved(top, rule, name, new):
+    """``new`` and the rule its line comes from (``name`` when that pass moved ``top``)."""
+    return new, (name if new != top else rule)
+
+
 def top_page(image: np.ndarray, box: CropBox, dpi: float, keep=(), rgb8: np.ndarray | None = None,
              start_out: float | None = None, snap_spine: bool = True, snap=None,
              crease_mm: float | None = None) -> tuple[CropBox, dict]:
@@ -514,11 +530,15 @@ def top_page(image: np.ndarray, box: CropBox, dpi: float, keep=(), rgb8: np.ndar
         a, e, d, n = _side(box, key)
         lines[key] = ((a + e) / 2, d)
         shifts[key] = 0.0
+        seen = candidates.active()
         if key in keep:
             # A spine side is not a paper edge; when the fold shows a clear crease, the spine is
             # its centre line (V600 truth: the crease within about 0.2 mm).
             snap_this = snap_spine and (snap is None or key in {tuple(k) for k in snap})
             cr = _crease(rgb8, a, e, d, n, px_mm, step, crease_mm) if snap_this else None
+            if seen:
+                _record(key, rgb8, box, dpi, a, e, d, n, kept=True, spine=bool(snap_this),
+                        crease=None if cr is None else (float(cr[0]), float(cr[1])))
             if cr is not None:
                 side_len = float(np.linalg.norm(e - a))
                 dd = d + n * cr[1]
@@ -531,25 +551,38 @@ def top_page(image: np.ndarray, box: CropBox, dpi: float, keep=(), rgb8: np.ndar
         near = xs_d >= -(_profile().layer_depth_mm or _profile().depth_mm) * px_mm - step / 2
         xs, s = xs_d[near], s_d[:, near]
         if valid[:, near].mean() < 0.9:
+            if seen:
+                _record(key, rgb8, box, dpi, a, e, d, n, skipped="off_image")
             continue  # the side runs off the image
         side_len = float(np.linalg.norm(e - a))
         pts = _segment_peaks(s, xs, ys, step / px_mm)
         layer = _layer_lines(pts, px_mm, side_len)
         X, Y = np.meshgrid(xs, ys - side_len / 2)
         top = _chain(layer, px_mm, s, X, Y, start_out)
+        rule = None if top is None else "chain"
         chained = top
         if top is not None and _profile().fine_stack:
-            top = _through_fine_stack(top, layer, s, xs, ys, step / px_mm, px_mm, side_len, X, Y)
+            top, rule = _moved(top, rule, "fine_stack",
+                               _through_fine_stack(top, layer, s, xs, ys, step / px_mm, px_mm, side_len, X, Y))
         if top is not None and _profile().fine_strong_lines:
             Xd, Yd = np.meshgrid(xs_d, ys - side_len / 2)
-            top = _through_strong_lines(top, s_d, xs_d, ys, step / px_mm, px_mm, side_len, Xd, Yd)
+            top, rule = _moved(top, rule, "strong_lines",
+                               _through_strong_lines(top, s_d, xs_d, ys, step / px_mm, px_mm, side_len, Xd, Yd))
         if top is not None and _profile().stack_jump:
-            top = _jump_stack(top, s, xs, ys, step / px_mm, px_mm, side_len, X, Y)
+            top, rule = _moved(top, rule, "stack_jump",
+                               _jump_stack(top, s, xs, ys, step / px_mm, px_mm, side_len, X, Y))
         if top is not None and _profile().walk_after_passes and top[0] < chained[0]:
-            top = _walk(layer, top, px_mm)  # page edges <= near_mm apart only (no colour tests)
+            # page edges <= near_mm apart only (no colour tests)
+            top, rule = _moved(top, rule, "walk", _walk(layer, top, px_mm))
         if DEBUG is not None:
             DEBUG[key] = {"lines": [(round(x0 / px_mm, 2), round(b, 4), sup) for x0, b, sup in layer],
                           "top": None if top is None else (round(top[0] / px_mm, 2), round(top[1], 4))}
+        if seen:
+            faint = _layer_lines(_segment_peaks(s, xs, ys, step / px_mm, prof.fine_stack_percentile), px_mm, side_len)
+            strong = _layer_lines(_segment_peaks(s_d, xs_d, ys, step / px_mm, prof.fine_strong_percentile),
+                                  px_mm, side_len)
+            _record(key, rgb8, box, dpi, a, e, d, n, pools={"layer": layer, "faint": faint, "strong": strong},
+                    chosen=None if top is None else (top[0], top[1]), rule=rule)
         if top is None:
             continue
         x0, b = top[0], top[1]
