@@ -10,6 +10,8 @@ also work. Licence MIT (GPL-3.0 until 0.5.2). Python package `hasami`, distribut
 - Branch from `main`, open a PR; the maintainer merges. Bump the version
   (`hasami/__init__.py` + `pyproject.toml`) with each merged feature: the
   window title shows it.
+- Docs-only changes (CLAUDE.md, README, other notes; no code, tests or packaging) go straight to
+  `main`, no PR (maintainer, Oct 2026).
 - Tests: `python -m pytest -q` (~3 min; `tests/conftest.py` sets Qt offscreen
   and a temporary APPDATA/XDG config). Run `benchmarks/synthetic_*.py` after
   any change to the crop engine and report the numbers.
