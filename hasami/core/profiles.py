@@ -143,6 +143,11 @@ class Profile:
     #: chain starts inside it when its inner line runs along (nearly) the whole side, light paper
     #: lies inside that line, and the band's colour is neither the paper's nor the lid's.
     cover_rim: bool = False
+    #: Under a propped lid the sheet just below the top page, sticking out 1-2 mm, is 16-19 L*
+    #: darker than the top page and neutral (further from the glass): over ``max_darker_l`` it
+    #: passed as print and the crop kept it.  With this (> ``max_darker_l``) a gap <= ``gap_mm``
+    #: is stack paper up to this much darker; wider gaps keep ``max_darker_l``.
+    stack_shadow_l: float = 0.0
 
     # ---- thick books on a light lid (thickbook.py) ----
     #: Fit a whole spread of a thick book (pages = the brightest plain surface).
@@ -166,6 +171,7 @@ PROFILES: dict[str, Profile] = {
         min_edge_step=0.6, crease_step=True, fine_stack=True, stack_by_segment=True, stack_jump=True, depth_mm=14.0, layer_depth_mm=10.0,
         fine_strong_lines=True, shrink_lid_hue=12.0, walk_after_passes=True,
         paper_colour_edges=15.0, cover_rim=True, lid_all_round_split_score=5.0,
+        stack_shadow_l=20.0,
         tuned_on="57 scans (booklet spreads, booklets too big for the bed, covers, prints), "
                  "26 thick-book spreads, 9 artboard pages with a thin page stack and 33 test scans "
                  "(artboard pages, covers, thick-book spreads), Oct 2026"),

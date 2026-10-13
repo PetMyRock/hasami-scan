@@ -244,6 +244,16 @@ better (V600 0041, 0042 by up to 0.9 mm); synthetic identical. Leftovers: 0014's
 app path (cover on the black bed, a light grey line along its edge: the scan-time top-page search
 starts at its far side; as on main); 0012's bare 200 dpi preview box 2.7 mm out on the stack side (as
 on main; the sheets do not resolve at 200 dpi; the scan is right).
+0.5.13 (step 2 of learned cropping: the line classifier's held-out fixes pointed at one rule):
+`stack_shadow_l` 20 (`toppage._paper_gap`). The chain stopped 1-2 mm out on V600 stacks where the sheet
+just below the top page sticks out 1-2.2 mm: neutral (a*b* 1-3) but 16-19 L* darker (propped lid,
+further from the glass), over `max_darker_l` 15 = "print". Gaps <= `gap_mm` now accept up to 20 L*
+darker; wider gaps keep 15. Fixed: V600 0001 (all paths), 0005, 0008, 0015, 0054 and 0056 (thick
+stacks, +5-7 mm; 0056's bare preview box still +5.3), New data 0002 and KLK6 0019 / 0021 / 0023
+(preview). Worse: 0056's preview bottom -0.68 -> -0.73, 0054 / 0056 app sides by <= 0.1 mm. Thick
+books and the other New data crops identical; synthetic identical. Left: stops where the top page has
+dark print at its edge (the paper sample inside is print: V600 0009, 0010, 0043; KLK 0014) and bluish
+cover bands (0044, 0046).
 
 ## Per-scanner tuning
 Users ask for tuning on the Discord server (https://discord.gg/TAAV8B9WWg) and share scans (an empty bed and
@@ -305,7 +315,7 @@ Data and benchmarks (all on the maintainer's machine):
 - Compare: `benchmarks/klk6/side_mm.py OUT/results.json` (signed mm per side), `side_diff.py OLD NEW`
   and `compare.py OLD NEW` (run with `PYTHONPATH=F:/HasamiData/benchmarks/klk6`). Judge sides in mm
   (within 0.5 / 1 mm), not only IoU >= 0.95; check the bare 200 dpi preview box too (the owner sees it).
-- Current V600 state (0.5.11): all 57 + 26 + 9 + 33 pass; test scans 85% of sides within 0.5 mm, all
+- Current V600 state (0.5.13): all 57 + 26 + 9 + 33 pass; test scans 85% of sides within 0.5 mm, all
   within 1 mm. Known leftovers to beat: see the 0.5.10 and 0.5.11 notes in "Scanner profiles".
 
 ## Ideas not done yet

@@ -274,13 +274,15 @@ def _paper_gap(S, X, Y, near, ln, cur, px_mm: float, wide: bool, darker: float |
     band = _between(S, X, Y, ln, cur, 0.3 * px_mm)
     if band is None:
         return False
+    prof = _profile()
+    max_darker = prof.max_darker_l if wide else max(prof.max_darker_l, prof.stack_shadow_l)
     for c in near:
         inside = _between(S, X, Y, (c[0] - 1.3 * px_mm, c[1]), (c[0], c[1]), 0.3 * px_mm)
         if inside is None:
             continue
         dL = inside[0] - band[0]  # > 0: the band is darker
         dab = float(np.hypot(*(inside[1:] - band[1:])))
-        if dab > _profile().max_hue_diff or dL > _profile().max_darker_l:
+        if dab > _profile().max_hue_diff or dL > max_darker:  # Profile.stack_shadow_l
             continue
         if not wide and dL >= -_profile().lighter_l:
             return True
