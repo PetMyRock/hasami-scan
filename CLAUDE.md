@@ -25,6 +25,11 @@ also work. Licence MIT (GPL-3.0 until 0.5.2). Python package `hasami`, distribut
 - Auto-crop changes: accuracy on the real scans of the tuned scanners comes
   first; synthetic results may drop a little for it (report them anyway).
   Keep booklet logic separate so it cannot degrade multi/single.
+- Small regressions are acceptable for a clear real-scan win (owner, Oct 2026; truth is marked by
+  eye, ~0.1 mm is its noise) when every worse side: moves <= ~0.2 mm; crosses no threshold (nothing
+  within 0.5 / 1 mm goes outside it, no scan stops passing); does not cut print (an inward move
+  > 0.3 mm stops the change: ask the owner); and the bare 200 dpi preview box gets no visibly worse.
+  Name every regression in the PR anyway.
 
 ## Layout
 - `hasami/core/autocrop.py`: detection engine (modes multi / single / booklet
