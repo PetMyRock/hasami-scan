@@ -36,6 +36,12 @@ class Profile:
     # ---- lid model (autocrop) ----
     #: Lab L below this counts as black (dark fabric or a jacket on a black bed is not an item).
     dark_floor_l: float = 12.0
+    #: Edge refinement takes the strongest side-averaged step; a printed line along a coloured
+    #: paper's edge can beat its faint step to the lid (orange cover on the grey lid: the drawing's
+    #: line 1.1 mm inside won).  With this limit (> 0, a*b* chroma), when there is coloured paper
+    #: on both sides of the chosen step, the edge is the steepest drop to neutral lid further out
+    #: (white paper and grey shadows never trigger it).
+    paper_colour_edges: float = 0.0
 
     # ---- booklet mode (booklet.py) ----
     #: Light lids: pull the booklet's sides in to the outermost paper edge (a thick
@@ -61,6 +67,11 @@ class Profile:
     #: the soft brightness hump of a propped-up lid (0.1-0.3) passed as a paper edge: the box
     #: stayed ~3 cm out in the lid (KLK artboard).
     min_edge_step: float = 0.0
+    #: That shrink gives up only lid or its shadow: with this (> 0) a strip whose median colour is
+    #: further than this from the lid's in a*b* (shadows on a grey lid stay grey) is kept (a green
+    #: cover running off the bed is uniform enough to pass as shadow; its sheen line became the
+    #: booklet's end and the box ran 8.7 mm into the cover).
+    shrink_lid_hue: float = 0.0
 
     # ---- top page (toppage.py): crops end at the top page's printed edge ----
     depth_mm: float = 10.0  # how far inside the side a page-stack band may reach
@@ -122,6 +133,16 @@ class Profile:
     fine_strong_lines: bool = False
     fine_strong_percentile: float = 10.0
     strong_darker_l: float = 1.0  # a wider gap to such a line: its strip this much darker than the paper
+    #: The chain runs before the faint-line passes; when they carry its end further in, it goes on
+    #: from there over page edges <= ``near_mm`` apart (always one stack: a lower page's 0.8 mm art
+    #: column before the top page, after 7 mm of white sheets).  Wider gaps are not crossed there
+    #: (a line printed on the top page inside a paper-coloured margin).
+    walk_after_passes: bool = False
+    #: A hard cover's rim showing beyond the top page (a uniform coloured band <= ``gap_mm`` wide
+    #: between the lid and the page; KLK artboard's green cover, 1.2 mm): with this switch the
+    #: chain starts inside it when its inner line runs along (nearly) the whole side, light paper
+    #: lies inside that line, and the band's colour is neither the paper's nor the lid's.
+    cover_rim: bool = False
 
     # ---- thick books on a light lid (thickbook.py) ----
     #: Fit a whole spread of a thick book (pages = the brightest plain surface).
@@ -143,9 +164,11 @@ PROFILES: dict[str, Profile] = {
         DEFAULT, name="epson-v600", label="Epson Perfection V600",
         match=(r"perfection\s*v600", r"\bgt-x820\b"),
         min_edge_step=0.6, crease_step=True, fine_stack=True, stack_by_segment=True, stack_jump=True, depth_mm=14.0, layer_depth_mm=10.0,
-        fine_strong_lines=True,
+        fine_strong_lines=True, shrink_lid_hue=12.0, walk_after_passes=True,
+        paper_colour_edges=15.0, cover_rim=True, lid_all_round_split_score=5.0,
         tuned_on="57 scans (booklet spreads, booklets too big for the bed, covers, prints), "
-                 "26 thick-book spreads and 9 artboard pages with a thin page stack, Oct 2026"),
+                 "26 thick-book spreads, 9 artboard pages with a thin page stack and 33 test scans "
+                 "(artboard pages, covers, thick-book spreads), Oct 2026"),
 }
 
 _ACTIVE: ContextVar[Profile] = ContextVar("hasami_profile", default=DEFAULT)

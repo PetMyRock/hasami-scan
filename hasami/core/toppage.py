@@ -315,6 +315,31 @@ def _walk(lines, cur, px_mm: float, S=None, X=None, Y=None):
     return cur
 
 
+def _past_cover_rim(lines, first, S, X, Y, px_mm: float):
+    """The page's edge inside a cover's rim (see ``Profile.cover_rim``), else ``first``."""
+    prof = _profile()
+    inner = [ln for ln in lines if 0 < first[0] - ln[0] <= prof.gap_mm * px_mm and ln[2] >= 0.85 * prof.segments]
+    if not inner:
+        return first
+    ln = max(inner, key=lambda t: t[0])
+    pad = 0.15 * px_mm
+    band = _between(S, X, Y, ln, first, pad)
+    paper = _between(S, X, Y, (ln[0] - 1.3 * px_mm, ln[1]), ln, pad)
+    lid = _between(S, X, Y, first, (first[0] + 0.8 * px_mm, first[1]), pad)
+    if band is None or paper is None or lid is None or paper[0] < prof.light_paper_l:
+        return first
+    if (np.hypot(*(band[1:] - paper[1:])) <= prof.max_hue_diff
+            or np.hypot(*(band[1:] - lid[1:])) <= prof.max_hue_diff):
+        return first
+    # uniform along the side (a cover's cloth or paper, not print that comes and goes)
+    rows = np.linspace(0, len(S), prof.segments + 1).astype(int)
+    segs = [_between(S[r0:r1], X[r0:r1], Y[r0:r1], ln, first, pad) for r0, r1 in zip(rows[:-1], rows[1:])]
+    segs = np.array([c for c in segs if c is not None])
+    if len(segs) < 0.75 * prof.segments or np.max(np.hypot(*(segs[:, 1:] - band[1:]).T)) > prof.max_hue_diff:
+        return first
+    return ln
+
+
 def _chain(lines, px_mm: float, S=None, X=None, Y=None, start_out: float | None = None):
     """Innermost line of the layer chain starting near the current side (x = 0), or None.
 
@@ -334,6 +359,8 @@ def _chain(lines, px_mm: float, S=None, X=None, Y=None, start_out: float | None 
         if S is None or not start:
             return None
     first = max(start, key=lambda ln: ln[0])
+    if not far and S is not None and _profile().cover_rim:
+        first = _past_cover_rim(lines, first, S, X, Y, px_mm)
     cur = _walk(lines, first, px_mm, S, X, Y)
     if far:
         shade = _between(S, X, Y, first, (0.0, first[1]), 0.3 * px_mm)
@@ -510,6 +537,7 @@ def top_page(image: np.ndarray, box: CropBox, dpi: float, keep=(), rgb8: np.ndar
         layer = _layer_lines(pts, px_mm, side_len)
         X, Y = np.meshgrid(xs, ys - side_len / 2)
         top = _chain(layer, px_mm, s, X, Y, start_out)
+        chained = top
         if top is not None and _profile().fine_stack:
             top = _through_fine_stack(top, layer, s, xs, ys, step / px_mm, px_mm, side_len, X, Y)
         if top is not None and _profile().fine_strong_lines:
@@ -517,6 +545,8 @@ def top_page(image: np.ndarray, box: CropBox, dpi: float, keep=(), rgb8: np.ndar
             top = _through_strong_lines(top, s_d, xs_d, ys, step / px_mm, px_mm, side_len, Xd, Yd)
         if top is not None and _profile().stack_jump:
             top = _jump_stack(top, s, xs, ys, step / px_mm, px_mm, side_len, X, Y)
+        if top is not None and _profile().walk_after_passes and top[0] < chained[0]:
+            top = _walk(layer, top, px_mm)  # page edges <= near_mm apart only (no colour tests)
         if DEBUG is not None:
             DEBUG[key] = {"lines": [(round(x0 / px_mm, 2), round(b, 4), sup) for x0, b, sup in layer],
                           "top": None if top is None else (round(top[0] / px_mm, 2), round(top[1], 4))}

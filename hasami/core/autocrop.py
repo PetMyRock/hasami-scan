@@ -811,8 +811,44 @@ def _pick_edge(profile: np.ndarray, ds: np.ndarray, shadow_px: float) -> int | N
     return best
 
 
+def chroma(image: np.ndarray) -> np.ndarray:
+    """Float32 a*b* chroma (distance from neutral grey) of an RGB image (8 or 16 bit, or float)."""
+    img = np.asarray(image)
+    if img.ndim == 2 or img.shape[2] == 1:
+        return np.zeros(img.shape[:2], np.float32)
+    rgb = img[:, :, :3]
+    if rgb.dtype != np.uint8:
+        rgb = (np.clip(to_float_rgb(rgb), 0, 1) * 255).astype(np.uint8)
+    lab = cv2.cvtColor(np.ascontiguousarray(rgb), cv2.COLOR_RGB2Lab)
+    a = lab[:, :, 1].astype(np.float32) - 128.0
+    b = lab[:, :, 2].astype(np.float32) - 128.0
+    return np.sqrt(a * a + b * b)
+
+
+def _past_printed_line(C: np.ndarray, p0: np.ndarray, p1: np.ndarray, n: np.ndarray, r: float,
+                       ds: np.ndarray, centre: int, shadow_px: float) -> int:
+    """Coloured paper on both sides of the chosen step: the paper goes on beyond it, so it is a
+    printed line along the edge; the paper edge is the steepest drop to neutral lid further out
+    (``Profile.paper_colour_edges``)."""
+    lim = profiles.current().paper_colour_edges
+    Cs, _, cds = _sample_side(C, p0, p1, n, -r, r, t_step=2.0, d_step=0.5, trim=0.08)
+    if Cs.size == 0 or len(cds) != len(ds):
+        return centre
+    with np.errstate(all="ignore"):
+        prof = np.nanmedian(Cs, axis=1)
+    k = max(2, int(round(0.4 * shadow_px / max(ds[1] - ds[0], 1e-6))))
+    at = lambda i: prof[min(max(i, 0), len(prof) - 1)]
+    if not (at(centre - k) > lim and at(centre + k) > lim):
+        return centre
+    neutral = [j for j in range(centre + k, len(prof)) if prof[j] <= 0.5 * lim]
+    if not neutral:
+        return centre
+    seg = prof[centre + 1 : neutral[0] + 1]
+    return centre + 1 + int(np.argmin(np.gradient(seg))) if seg.size > 1 else neutral[0]
+
+
 def _fit_side(L: np.ndarray, p0: np.ndarray, p1: np.ndarray, n: np.ndarray, r: float,
-              exclude_shadow: bool = True, shadow_px: float = 6.0) -> _SideFit:
+              exclude_shadow: bool = True, shadow_px: float = 6.0, C: np.ndarray | None = None) -> _SideFit:
     """Locate one side of a box precisely.
 
     The edge is first chosen on the gradient profile averaged along the whole
@@ -865,9 +901,15 @@ def _fit_side(L: np.ndarray, p0: np.ndarray, p1: np.ndarray, n: np.ndarray, r: f
     centre = _pick_edge(mean_prof, ds, shadow_px if exclude_shadow else 0.0)
     if centre is None:
         return _SideFit(reason="flat")
+    moved = 0.0
+    if C is not None:
+        c0, centre = centre, _past_printed_line(C, p0, p1, n, r, ds, centre, shadow_px)
+        moved = abs(float(ds[centre] - ds[c0]))
     # Per-column search window around the side-averaged edge; wide enough to
     # follow a residual tilt of ~0.35 degrees along the side.
     half = 3.0 + 0.5 * length * math.tan(math.radians(0.35))
+    if moved:
+        half = min(half, max(1.5, 0.45 * moved))  # stay clear of the printed line passed over
     lo = max(0, int(centre - half / step))
     hi = min(len(ds), int(centre + half / step) + 1)
     offs = np.full(gp.shape[1], np.nan)
@@ -915,7 +957,7 @@ def _fit_side(L: np.ndarray, p0: np.ndarray, p1: np.ndarray, n: np.ndarray, r: f
 
 def _refine_edges(L: np.ndarray, box: CropBox, radius: float, exclude_shadow: bool = True,
                   iterations: int = 2, shadow_px: float = 6.0,
-                  skip: set[tuple[int, int]] | None = None) -> CropBox:
+                  skip: set[tuple[int, int]] | None = None, C: np.ndarray | None = None) -> CropBox:
     """Locate each side precisely and re-estimate the angle.
 
     Works directly on a (large) full-resolution luminance image: only thin
@@ -931,7 +973,7 @@ def _refine_edges(L: np.ndarray, box: CropBox, radius: float, exclude_shadow: bo
         for (p0, p1, n, axis, sign), name in zip(_box_sides(box), ("top", "right", "bottom", "left")):
             if skip and (axis, sign) in skip:
                 continue
-            fit = _fit_side(L, p0, p1, n, r, exclude_shadow, shadow_px)
+            fit = _fit_side(L, p0, p1, n, r, exclude_shadow, shadow_px, C)
             if fit.reason:
                 reasons[name] = fit.reason
                 continue
@@ -1061,6 +1103,7 @@ def _finish(image: np.ndarray, boxes: list[CropBox], scale: float, st: AutoCropS
     H, W = image.shape[:2]
     out: list[CropBox] = []
     Lfull = luminance(image) if st.edge_refine and boxes else None
+    Cfull = chroma(image) if st.edge_refine and boxes and profiles.current().paper_colour_edges > 0 else None
     margin_px = st.margin_mm * dpi / MM_PER_INCH
     for k, box in enumerate(boxes):
         b = box.scaled(1.0 / scale) if scale < 1 else box
@@ -1068,7 +1111,7 @@ def _finish(image: np.ndarray, boxes: list[CropBox], scale: float, st: AutoCropS
         if st.edge_refine:
             radius = max(4.0, 6.0 / scale)
             skip = skip_sides[k] if skip_sides else None
-            b = _refine_edges(Lfull, b, radius, shadow_px=1.0 * dpi / MM_PER_INCH, skip=skip)
+            b = _refine_edges(Lfull, b, radius, shadow_px=1.0 * dpi / MM_PER_INCH, skip=skip, C=Cfull)
         if not st.deskew:
             x0, y0, x1, y1 = b.bounding_rect()
             b = replace(b, cx=(x0 + x1) / 2, cy=(y0 + y1) / 2, w=x1 - x0, h=y1 - y0, angle=0.0,
@@ -1134,6 +1177,7 @@ def _refine(image: np.ndarray, boxes: list[CropBox], st: AutoCropSettings, dpi: 
     dpi = dpi or st.default_dpi
     H, W = image.shape[:2]
     L = luminance(image)
+    C = chroma(image) if profiles.current().paper_colour_edges > 0 else None
     out = []
     margin_px = st.margin_mm * dpi / MM_PER_INCH
     r = radius if radius is not None else max(4.0, 1.5 * dpi / 100.0)
@@ -1151,7 +1195,7 @@ def _refine(image: np.ndarray, boxes: list[CropBox], st: AutoCropSettings, dpi: 
         # Undo the margin so that refinement starts on the edge itself.
         start = b.inset(-margin_px)
         keep = {tuple(k) for k in b.meta.get("keep_sides", [])}
-        nb = _refine_edges(L, start, r, shadow_px=1.0 * dpi / MM_PER_INCH, skip=keep or None)
+        nb = _refine_edges(L, start, r, shadow_px=1.0 * dpi / MM_PER_INCH, skip=keep or None, C=C)
         if not st.deskew:
             x0, y0, x1, y1 = nb.bounding_rect()
             nb = replace(nb, cx=(x0 + x1) / 2, cy=(y0 + y1) / 2, w=x1 - x0, h=y1 - y0, angle=0.0)

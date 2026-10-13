@@ -204,6 +204,34 @@ beyond looked like a valley (0004: fold 2.4 mm into the facing page). Benchmark:
 preview box within 1 mm too (was up to 10.4 mm out on the stack side); 57 + 26 + 9 only
 better (V600 0003, 0008; KLK 0017). Leftovers: folds 0.5-0.9 mm short on soft/broad creases
 (0002, 0004 via the preview, 0007).
+0.5.11 (owner's second batch, `Test Data_0011`-`0035`: two more KLK Vol.6 pages, four covers alone,
+19 whole spreads of the thick KLK Vol.7 Key Art Collection; 0016/0028 skipped, owner): five V600
+switches. `shrink_lid_hue` (the lid-shadow shrink gives up only lid-coloured strips: a plain green
+cover running off the bed passed as shadow, its sheen line ended the booklet, no spine, the box ran
+8.7 mm into the cover). `walk_after_passes` (after the
+faint-line passes the chain goes on over edges <= `near_mm` apart: a lower page's 0.8 mm art column
+after 7 mm of white sheets; wider gaps not, see below). `cover_rim` (`toppage._past_cover_rim`: a
+uniform coloured band <= `gap_mm` between lid and page, neither paper- nor lid-coloured, with a
+full-length line inside and light paper: the hard cover's rim, 1.2 mm). `paper_colour_edges` 15
+(`autocrop._past_printed_line` in the edge refinement: coloured paper on both sides of the chosen step
+means a printed line, the edge is the steepest chroma drop to neutral lid further out; orange cover on
+the grey lid, ~9 L* step, the drawing's line 1.1 mm inside won). `lid_all_round_split_score` 5 (a
+cover whose shadow made two sides fail the paper-edge test was split at a printed line scoring 3.0;
+V600 whole spreads score >= 13). Tried and dropped: chroma added to the refine's edge image (helped 5
+V600 cases, but the bluish lid shadow beside white covers became the edge: 4 covers ~1 mm out), and to
+the paper-edge test (no effect); letting the shrink pass steps too close to the border to check (0016/
+0028: a lid step 2.6 mm from the bed's edge kept the box on the whole bed; fixed V600 0008 full-scan
++1.5 mm but broke 0014's preview path +0.7 mm). Known risk: once a chain reaches the top page it crosses a
+paper-coloured gap <= `gap_mm`, so a frame line printed that close inside is taken; `cover_rim` starts
+chains on more pages (`test_v600_profile_crops_a_thick_stack_off_in_a_preview` keeps it off for that
+reason). The thick spreads: one rectangle cannot follow the two pages (turned ~0.45 deg against each
+other): stack wedges in the corners stay, by the owner's spread rule (no print cut).
+Benchmark (scenario `app` = the app's path, plus `preview` and `real`): the 23 new scans all within 1 mm
+(85% within 0.5 mm; on main worst 8.7 mm: 0012's fold, 0013 -1.4, 0011 +0.85); 57 + 26 + 9 only
+better (V600 0041, 0042 by up to 0.9 mm); synthetic identical. Leftovers: 0014's top +0.77 mm on the
+app path (cover on the black bed, a light grey line along its edge: the scan-time top-page search
+starts at its far side; as on main); 0012's bare 200 dpi preview box 2.7 mm out on the stack side (as
+on main; the sheets do not resolve at 200 dpi; the scan is right).
 
 ## Per-scanner tuning
 Users ask for tuning on the Discord server (https://discord.gg/TAAV8B9WWg) and share scans (an empty bed and
@@ -212,7 +240,7 @@ stored with the scans in the private data repo; auto-crop is tuned until the
 scans pass (count right and IoU >= 0.95), checking the other tuned scanners
 do not get worse. Plan: per-scanner profiles picked from the driver's model
 name, with a drop-down to override. Tuned so far: Epson Perfection V600 (57
-scans + 26 thick-book spreads, all pass), Epson V39 (older scans).
+scans + 26 thick-book spreads + 9 artboard pages + 33 test scans, all pass), Epson V39 (older scans).
 
 ## Test scans (0.5.8, owner)
 Toolbar/Scan menu "Test scan" (Ctrl+T, `MainWindow.do_test_scan` -> `Session.run_test_scan`):
