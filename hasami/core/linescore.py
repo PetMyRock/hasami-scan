@@ -90,3 +90,51 @@ def merge_pools(pools: dict, px_mm: float) -> list[dict]:
             else:
                 out.append({"x0": float(x0), "slope": float(slope), "support": sup, "pools": {name}})
     return sorted(out, key=lambda c: -c["x0"])
+
+
+#: The engineered features, in this order (what the hand rules look at, plus the line's place).
+FEATURES = ("offset_mm", "slope", "support", "in_layer", "in_faint", "in_strong", "in_edge", "rank_out",
+            "n_lines", "gap_out_mm", "gap_in_mm", "L_out", "a_out", "b_out", "L_in", "a_in", "b_in", "dL",
+            "dab", "seg_dL_std", "seg_darker_share", "strength", "seg_strength_share", "valid_out", "dpi")
+NO_GAP_MM = 20.0  # gap feature when there is no line on that side
+
+
+def _band(patch: np.ndarray, cols: np.ndarray, lo: float, hi: float) -> np.ndarray:
+    """(segments, 3) median colour of the columns lo < x <= hi (mm) inside the image; NaN where none."""
+    seg = patch[:, (cols > lo) & (cols <= hi)]
+    out = np.full((patch.shape[0], 3), np.nan, np.float32)
+    for k in range(patch.shape[0]):
+        ok = seg[k, :, 3] >= 0.5
+        if ok.any():
+            out[k] = np.median(seg[k, ok, :3], axis=0)
+    return out
+
+
+def _median_rows(rows: np.ndarray) -> np.ndarray:
+    ok = ~np.isnan(rows[:, 0])
+    return np.median(rows[ok], axis=0) if ok.any() else np.zeros(3, np.float32)
+
+
+def features(cands: list[dict], i: int, fine: np.ndarray, dpi: float) -> np.ndarray:
+    """The FEATURES of candidate ``i`` (``cands`` from ``merge_pools``, ``fine`` its fine patch)."""
+    c, px = cands[i], dpi / MM_PER_INCH
+    outside, inside = _band(fine, FINE_COLS, 0.15, 1.3), _band(fine, FINE_COLS, -1.3, -0.15)
+    o, n = _median_rows(outside), _median_rows(inside)
+    dl = inside[:, 0] - outside[:, 0]
+    dl = dl[~np.isnan(dl)]
+    mid = int(np.argmin(np.abs(FINE_COLS)))  # the line's own column
+    g = np.linalg.norm(fine[:, mid + 1, :3] - fine[:, mid - 1, :3], axis=1) / 0.2  # Lab per mm
+    g = g[(fine[:, mid - 1, 3] >= 0.5) & (fine[:, mid + 1, 3] >= 0.5)]
+    gap_out = (cands[i - 1]["x0"] - c["x0"]) / px if i > 0 else NO_GAP_MM
+    gap_in = (c["x0"] - cands[i + 1]["x0"]) / px if i + 1 < len(cands) else NO_GAP_MM
+    v = {"offset_mm": c["x0"] / px, "slope": c["slope"], "support": c["support"] / SEGMENTS,
+         **{f"in_{p}": float(p in c["pools"]) for p in POOLS},
+         "rank_out": i, "n_lines": len(cands), "gap_out_mm": min(gap_out, NO_GAP_MM),
+         "gap_in_mm": min(gap_in, NO_GAP_MM), "L_out": o[0], "a_out": o[1], "b_out": o[2],
+         "L_in": n[0], "a_in": n[1], "b_in": n[2], "dL": n[0] - o[0], "dab": float(np.hypot(*(n[1:] - o[1:]))),
+         "seg_dL_std": float(dl.std()) if len(dl) > 1 else 0.0,
+         "seg_darker_share": float((dl >= 2.0).mean()) if len(dl) else 0.0,
+         "strength": float(np.median(g)) if len(g) else 0.0,
+         "seg_strength_share": float((g >= 6.0).mean()) if len(g) else 0.0,
+         "valid_out": float(fine[:, FINE_COLS > 0, 3].mean()), "dpi": dpi / 400.0}
+    return np.array([v[f] for f in FEATURES], np.float32)

@@ -52,3 +52,27 @@ def test_lines_of_several_pools_merge_into_one_candidate():
     c = ls.merge_pools(pools, px)
     assert [round(x["x0"], 3) for x in c] == [5.0, -10.0]  # outermost first; the layer pool's position
     assert c[1]["pools"] == {"layer", "faint"} and c[1]["support"] == 12
+
+
+def test_features_of_a_paper_edge_on_the_lid():
+    img, side = _step_scan(300)
+    cands = ls.merge_pools({"layer": [(0.0, 0.0, 16)]}, side.px_mm)
+    fine, _coarse = ls.patches(img, side, 0.0, 0.0)
+    v = ls.features(cands, 0, fine, side.dpi)
+    assert v.shape == (len(ls.FEATURES),) and v.dtype == np.float32
+    f = dict(zip(ls.FEATURES, v))
+    assert f["dL"] > 40 and f["seg_darker_share"] == 1.0  # paper inside, much lighter than the lid
+    assert f["strength"] > 6 and f["seg_strength_share"] == 1.0
+    assert f["in_layer"] == 1.0 and f["in_faint"] == 0.0 and f["support"] == 1.0
+    assert f["rank_out"] == 0 and f["n_lines"] == 1 and f["gap_out_mm"] == 20.0 and f["gap_in_mm"] == 20.0
+    assert f["valid_out"] == 1.0 and f["dpi"] == 0.75
+
+
+def test_features_count_lines_outside_and_gaps_in_mm():
+    img, side = _step_scan(300)
+    px = side.px_mm
+    cands = ls.merge_pools({"layer": [(0.0, 0.0, 16), (1.0 * px, 0.0, 10), (-3.0 * px, 0.0, 10)]}, px)
+    fine, _ = ls.patches(img, side, 0.0, 0.0)
+    f = dict(zip(ls.FEATURES, ls.features(cands, 1, fine, side.dpi)))  # the middle line (x0 = 0)
+    assert f["rank_out"] == 1 and f["n_lines"] == 3
+    assert abs(f["gap_out_mm"] - 1.0) < 1e-4 and abs(f["gap_in_mm"] - 3.0) < 1e-4
