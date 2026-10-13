@@ -36,7 +36,7 @@ from dataclasses import dataclass, replace
 import cv2
 import numpy as np
 
-from . import profiles
+from . import candidates, profiles
 from .geometry import CropBox, reading_order
 
 MM_PER_INCH = 25.4
@@ -782,6 +782,17 @@ class _SideFit:
     dtheta: float = 0.0  # rotation of the side line (degrees)
     weight: float = 0.0  # number of inlier samples
     reason: str = ""  # why the side was rejected (empty when accepted)
+    peaks: tuple[float, ...] = ()  # offsets (px, outwards) of the side-averaged profile's peaks
+    picked: float | None = None  # the one chosen before the line fit
+
+
+def _edge_peaks(profile: np.ndarray) -> list[int]:
+    """Indices of the side-averaged profile's peaks (>= 30 % of its maximum)."""
+    mx = float(profile.max())
+    if mx <= 0:
+        return []
+    return [i for i in range(1, len(profile) - 1)
+            if profile[i] >= 0.3 * mx and profile[i] >= profile[i - 1] and profile[i] >= profile[i + 1]]
 
 
 def _pick_edge(profile: np.ndarray, ds: np.ndarray, shadow_px: float) -> int | None:
@@ -796,11 +807,7 @@ def _pick_edge(profile: np.ndarray, ds: np.ndarray, shadow_px: float) -> int | N
     mx = float(profile.max())
     if mx <= 0:
         return None
-    peaks = [
-        i
-        for i in range(1, len(profile) - 1)
-        if profile[i] >= 0.3 * mx and profile[i] >= profile[i - 1] and profile[i] >= profile[i + 1]
-    ]
+    peaks = _edge_peaks(profile)
     if not peaks:
         return int(np.argmax(profile))
     r = max(abs(ds[0]), abs(ds[-1]), 1e-6)
@@ -905,6 +912,7 @@ def _fit_side(L: np.ndarray, p0: np.ndarray, p1: np.ndarray, n: np.ndarray, r: f
     if C is not None:
         c0, centre = centre, _past_printed_line(C, p0, p1, n, r, ds, centre, shadow_px)
         moved = abs(float(ds[centre] - ds[c0]))
+    seen = {"peaks": tuple(float(ds[i]) for i in _edge_peaks(mean_prof)), "picked": float(ds[centre])}
     # Per-column search window around the side-averaged edge; wide enough to
     # follow a residual tilt of ~0.35 degrees along the side.
     half = 3.0 + 0.5 * length * math.tan(math.radians(0.35))
@@ -931,7 +939,7 @@ def _fit_side(L: np.ndarray, p0: np.ndarray, p1: np.ndarray, n: np.ndarray, r: f
     noise = float(np.median(np.abs(g))) + 1e-6
     ok = ~np.isnan(offs) & (strengths > 3 * noise)
     if ok.sum() < max(6, 0.3 * len(offs)):
-        return _SideFit(reason=f"weak edge ({int(ok.sum())}/{len(offs)})")
+        return _SideFit(reason=f"weak edge ({int(ok.sum())}/{len(offs)})", **seen)
     t_ok, d_ok = tcent[ok], offs[ok]
     # Robust line fit d = a + b * t (iteratively trimmed least squares).
     inl = np.ones(len(t_ok), bool)
@@ -945,13 +953,14 @@ def _fit_side(L: np.ndarray, p0: np.ndarray, p1: np.ndarray, n: np.ndarray, r: f
         tol = max(1.0, 2.5 * _robust_sigma(res[inl]))
         inl = res < tol
     if inl.sum() < max(5, 0.35 * len(offs)):
-        return _SideFit(reason=f"no line ({int(inl.sum())}/{len(offs)})")
+        return _SideFit(reason=f"no line ({int(inl.sum())}/{len(offs)})", **seen)
     # Sides run clockwise on screen with the outward normal on their left, so
     # an outward slope b turns the side by -atan(b) in the box angle sense.
     return _SideFit(
         shift=float(a_ + b_ * length / 2.0),
         dtheta=-math.degrees(math.atan(b_)),
         weight=float(inl.sum()),
+        **seen,
     )
 
 
@@ -974,6 +983,11 @@ def _refine_edges(L: np.ndarray, box: CropBox, radius: float, exclude_shadow: bo
             if skip and (axis, sign) in skip:
                 continue
             fit = _fit_side(L, p0, p1, n, r, exclude_shadow, shadow_px, C)
+            if candidates.active():
+                candidates.record(kind="edge", key=(axis, sign), iteration=it, image_shape=tuple(L.shape[:2]),
+                                  box=[box.cx, box.cy, box.w, box.h, box.angle], p0=p0.tolist(),
+                                  p1=p1.tolist(), n=n.tolist(), radius=float(r), peaks=list(fit.peaks),
+                                  picked=fit.picked, shift=fit.shift, dtheta=fit.dtheta, reason=fit.reason)
             if fit.reason:
                 reasons[name] = fit.reason
                 continue

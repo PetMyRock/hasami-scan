@@ -76,3 +76,34 @@ def test_collecting_changes_no_crop(profile):
         seen = detect(sc.image, st, dpi=200)
     assert any(r["kind"] == "toppage" for r in recs)
     assert [b.corners().tolist() for b in plain] == [b.corners().tolist() for b in seen]
+
+
+from hasami.core.autocrop import refine  # noqa: E402
+
+
+def _print_on_lid():
+    img = np.full((600, 800, 3), 200, np.uint8)
+    img[100:500, 150:650] = 250  # a white print, edges at x 150 / 650, y 100 / 500
+    return img, CropBox.from_xywh(152, 102, 496, 396)  # 2 px inside every edge
+
+
+def test_edge_refinement_records_its_peaks():
+    img, box = _print_on_lid()
+    st = AutoCropSettings(mode="multi", margin_mm=0)
+    with candidates.collecting() as recs:
+        refine(img, [box], st, dpi=100)
+    edges = [r for r in recs if r["kind"] == "edge"]
+    assert {r["key"] for r in edges} == {(1, -1), (0, 1), (1, 1), (0, -1)}
+    right = next(r for r in edges if r["key"] == (0, 1) and r["iteration"] == 0)
+    assert right["reason"] == "" and right["image_shape"] == (600, 800)
+    assert any(abs(p - right["shift"]) < 1.0 for p in right["peaks"])
+    assert right["shift"] == pytest.approx(2.0, abs=0.7)
+
+
+def test_collecting_changes_no_refined_edge():
+    img, box = _print_on_lid()
+    st = AutoCropSettings(mode="multi", margin_mm=0)
+    plain = refine(img, [box], st, dpi=100)
+    with candidates.collecting():
+        seen = refine(img, [box], st, dpi=100)
+    assert [b.corners().tolist() for b in plain] == [b.corners().tolist() for b in seen]
