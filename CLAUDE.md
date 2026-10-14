@@ -292,6 +292,12 @@ right), the staples are not the signal there, and it would risk every other fold
 (one side rises >= 2x the other) and on 18 the truth is 0.7-1.0 mm towards the steeper side (the junction with the
 facing page, not the valley's bottom), but 39 of the 277 right folds are as lopsided and New data 0002's truth is on
 the other side: no cue tells which convention a fold follows.
+Thick books cut 1.1-1.8 mm inward (Key Art Collection 0006 right, 0025 / 0026 left; looked at and left, owner):
+`thickbook.fit_spread` starts a page where paper stays above P - 5 (P = the spread's middle, 75th percentile);
+there the top page's outer 1-3 mm reads 6-8 L* darker (79-81) before the sharp drop to the stack or board. The cut
+part is blank cream margin, no print. Following the paper outwards to the drop (within 6 L*) fixed 0006 / 0026 but
+walked onto the stack on 9 Key Art Collection and KLK7 sides (up to +1.25 mm; 11 better, 31 worse): the darker
+margin and the stack band are equally bright.
 
 ## Per-scanner tuning
 Users ask for tuning on the Discord server (https://discord.gg/TAAV8B9WWg) and share scans (an empty bed and
