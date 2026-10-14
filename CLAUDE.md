@@ -284,8 +284,10 @@ Fixed: V600 0002 fold +-0.9 -> +-0.2 (every path), 0003 +1.03 -> +0.17, 0031 +1.
 0039 refine / app +2.02 -> +1.30, New data 0003 +0.79 -> +0.38, 0008 -0.56 -> -0.33, KLK6 0017 +0.73 -> +0.14;
 folds within 0.5 mm 359 -> 373 of 404. Worse (<= 0.11 mm): New data 0004's preview fold -0.34 -> -0.45, KLK7 thick
 spreads' union sides by up to 0.1 (their folds now snap), KLK Vol.5 folds by <= 0.05, V600 0005 +0.06. Left:
-saddle-stitched centre spreads (V600 0040 -2.5, 0039 preview +2.0): flat cream paper, no dark crease, the fold is
-the staple line (bright staples); creases found on the wrong valley (V600 0016 ~0.9, KLK6 0019 / 0022 / 0023
+saddle-stitched centre spreads (V600 0040 -2.5, 0039 preview +2.0): flat cream paper, no crease along about half
+the fold; the only strong valley is where the facing page's art begins, 0.3-0.5 mm off. A staple-line cue was
+considered and dropped (owner): only these 2 of the 10 stapled booklets (0029-0040; the others show a crease and are
+right), the staples are not the signal there, and it would risk every other fold; creases found on the wrong valley (V600 0016 ~0.9, KLK6 0019 / 0022 / 0023
 0.5-0.8, New data 0002 / 0004 soft folds ~0.65).
 
 ## Per-scanner tuning
