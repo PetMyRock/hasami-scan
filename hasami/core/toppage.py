@@ -557,6 +557,11 @@ def top_page(image: np.ndarray, box: CropBox, dpi: float, keep=(), rgb8: np.ndar
             # its centre line (V600 truth: the crease within about 0.2 mm).
             snap_this = snap_spine and (snap is None or key in {tuple(k) for k in snap})
             cr = _crease(rgb8, a, e, d, n, px_mm, step, crease_mm) if snap_this else None
+            for reach in _profile().crease_retry_mm if snap_this and cr is None else ():
+                if reach < crease_mm:  # Profile.crease_retry_mm: the nearest crease first
+                    cr = _crease(rgb8, a, e, d, n, px_mm, step, reach)
+                    if cr is not None:
+                        break
             if seen:
                 _record(key, rgb8, box, dpi, a, e, d, n, kept=True, spine=bool(snap_this),
                         crease=None if cr is None else (float(cr[0]), float(cr[1])))

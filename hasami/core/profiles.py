@@ -160,6 +160,10 @@ class Profile:
     #: +1.4 / +2.3 mm).  With this the rim's other tests decide (uniform along the side, a hue unlike
     #: both the lid's and the inside's, a full-length line inside, <= ``gap_mm`` wide).
     rim_print_inside: bool = False
+    #: When no crease agrees within the spine's full reach (other dark lines a few mm away split the
+    #: segments' votes: V600 0002, 0003, 0031), look again within these shorter reaches (mm), the
+    #: nearest first; the first crease found is the fold.
+    crease_retry_mm: tuple[float, ...] = ()
 
     # ---- thick books on a light lid (thickbook.py) ----
     #: Fit a whole spread of a thick book (pages = the brightest plain surface).
@@ -183,7 +187,7 @@ PROFILES: dict[str, Profile] = {
         min_edge_step=0.6, crease_step=True, fine_stack=True, stack_by_segment=True, stack_jump=True, depth_mm=14.0, layer_depth_mm=10.0,
         fine_strong_lines=True, shrink_lid_hue=12.0, walk_after_passes=True,
         paper_colour_edges=15.0, cover_rim=True, lid_all_round_split_score=5.0,
-        stack_shadow_l=20.0, dark_edge_l=15.0, rim_print_inside=True,
+        stack_shadow_l=20.0, dark_edge_l=15.0, rim_print_inside=True, crease_retry_mm=(1.0, 2.0),
         tuned_on="57 scans (booklet spreads, booklets too big for the bed, covers, prints), "
                  "26 thick-book spreads, 9 artboard pages with a thin page stack and 33 test scans "
                  "(artboard pages, covers, thick-book spreads), Oct 2026"),

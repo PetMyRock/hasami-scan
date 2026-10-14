@@ -277,6 +277,16 @@ rim's inner line 10/16 at 200 dpi) and refine / app (the chain starts on a shado
 rim test never runs; testing the rim after the walk too would cut coloured frames printed on top pages).
 Wider risk: a uniform coloured frame <= 2.2 mm along a top page lying on the lid, with art inside, is now
 taken for a rim.
+0.5.16 (re-measure on 0.5.15: hasami-data `benchmarks/learned/remeasure_2026-10-14.md`, 79 of 1952 sides over
+0.5 mm, 45 of them folds): `crease_retry_mm` (1, 2). When no crease agrees within the spine's reach (3 mm), other
+dark lines a few mm away split the segments' votes; the crease is looked for again within 1 mm, then 2 mm.
+Fixed: V600 0002 fold +-0.9 -> +-0.2 (every path), 0003 +1.03 -> +0.17, 0031 +1.38 -> +0.38, 0018 +0.41 -> +0.16,
+0039 refine / app +2.02 -> +1.30, New data 0003 +0.79 -> +0.38, 0008 -0.56 -> -0.33, KLK6 0017 +0.73 -> +0.14;
+folds within 0.5 mm 359 -> 373 of 404. Worse (<= 0.11 mm): New data 0004's preview fold -0.34 -> -0.45, KLK7 thick
+spreads' union sides by up to 0.1 (their folds now snap), KLK Vol.5 folds by <= 0.05, V600 0005 +0.06. Left:
+saddle-stitched centre spreads (V600 0040 -2.5, 0039 preview +2.0): flat cream paper, no dark crease, the fold is
+the staple line (bright staples); creases found on the wrong valley (V600 0016 ~0.9, KLK6 0019 / 0022 / 0023
+0.5-0.8, New data 0002 / 0004 soft folds ~0.65).
 
 ## Per-scanner tuning
 Users ask for tuning on the Discord server (https://discord.gg/TAAV8B9WWg) and share scans (an empty bed and
@@ -338,7 +348,7 @@ Data and benchmarks (all on the maintainer's machine):
 - Compare: `benchmarks/klk6/side_mm.py OUT/results.json` (signed mm per side), `side_diff.py OLD NEW`
   and `compare.py OLD NEW` (run with `PYTHONPATH=F:/HasamiData/benchmarks/klk6`). Judge sides in mm
   (within 0.5 / 1 mm), not only IoU >= 0.95; check the bare 200 dpi preview box too (the owner sees it).
-- Current V600 state (0.5.15): all 57 + 26 + 9 + 33 pass; test scans 85% of sides within 0.5 mm, all
+- Current V600 state (0.5.16): all 57 + 26 + 9 + 33 pass; test scans 85% of sides within 0.5 mm, all
   within 1 mm. Known leftovers to beat: see the 0.5.10 and 0.5.11 notes in "Scanner profiles".
 
 ## Ideas not done yet

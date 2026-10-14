@@ -14,7 +14,7 @@ def test_v600_profile_differs_from_the_default_only_in_its_own_switches():
     own = {"min_edge_step", "crease_step", "fine_stack", "stack_by_segment", "stack_jump", "depth_mm",
            "layer_depth_mm", "fine_strong_lines", "shrink_lid_hue", "walk_after_passes",
            "cover_rim", "paper_colour_edges", "lid_all_round_split_score", "stack_shadow_l",
-           "dark_edge_l", "rim_print_inside"}
+           "dark_edge_l", "rim_print_inside", "crease_retry_mm"}
     v600, default = profiles.get("epson-v600"), profiles.DEFAULT
     for f in dataclasses.fields(profiles.Profile):
         if f.name not in ident | own:
@@ -551,3 +551,36 @@ def test_v600_profile_crops_a_cover_rim_off_before_dark_print(monkeypatch):
         found[name] = (out.bounding_rect()[0] - x0) / mm
     assert found["before"] < -1.0, found
     assert abs(found["epson-v600"]) < 0.3, found
+
+
+def _fold_with_a_printed_line(seed: int = 0):
+    """A page whose spine side lies 0.8 mm from the fold's crease, with a dark printed line 2.5 mm
+    inside the page along half the side (the 3 mm crease search's segments split between them)."""
+    from hasami.core.geometry import CropBox
+
+    mm = 300 / 25.4
+    rng = np.random.default_rng(seed)
+    img = np.full((int(120 * mm), int(130 * mm), 3), 236, np.float32)
+    x0, y0, x1, y1 = int(20 * mm), int(10 * mm), int(100 * mm), int(110 * mm)
+    fold = x1 + int(round(0.8 * mm))
+    img[:, fold - 2:fold + 3] = 150
+    line = x1 - int(round(2.5 * mm))
+    img[y0:(y0 + y1) // 2, line - 2:line + 3] = 60
+    img = np.clip(img + rng.normal(0, 1.5, img.shape), 0, 255).astype(np.uint8)
+    return img, CropBox.from_xywh(x0, y0, x1 - x0, y1 - y0), (fold - x1) / mm
+
+
+def test_v600_profile_finds_the_crease_nearer_the_spine_when_the_full_search_splits(monkeypatch):
+    # Within 3 mm of the spine, half the segments' darkest valley was a printed line: no crease
+    # agreed and the spine stayed 0.8 mm off the fold (V600 0002, 0003, 0031).
+    from hasami.core.toppage import SIDES, top_page
+
+    img, box, fold_mm = _fold_with_a_printed_line()
+    _with(monkeypatch, crease_retry_mm=())
+    found = {}
+    for name in ("before", "epson-v600"):
+        with profiles.use(name):
+            _, shifts = top_page(img, box, 300, keep=SIDES, snap=[(0, 1)], crease_mm=3.0)
+        found[name] = shifts[(0, 1)]
+    assert found["before"] == 0.0, found
+    assert abs(found["epson-v600"] - fold_mm) < 0.2, found
