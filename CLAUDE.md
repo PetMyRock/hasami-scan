@@ -254,6 +254,19 @@ stacks, +5-7 mm; 0056's bare preview box still +5.3), New data 0002 and KLK6 001
 books and the other New data crops identical; synthetic identical. Left: stops where the top page has
 dark print at its edge (the paper sample inside is print: V600 0009, 0010, 0043; KLK 0014) and bluish
 cover bands (0044, 0046).
+0.5.14: `dark_edge_l` 15 (`toppage._dark_edge`). Dark covers with the propped lid's grey shadow beside them
+(V600 0009, 0010, 0043) and top pages printed dark to the edge with the sheets below showing (0011, KLK
+0014): a neutral band 1-1.7 mm wide, L* 67-74, lighter than the print inside, so it never passed as stack
+paper. A gap <= `gap_mm` to a line with >= 85% support is now crossed when the band is neutral and >= 2 L*
+darker than the lid outside the chain's first line (a white margin on the glass is brighter) and the
+inside is >= 15 L* darker than the band; the walk ends there. Fixed from +0.8-1.5 mm to about -0.2 on the
+real scan and the bare 200 dpi preview box. Accepted regression (owner): 0043's other long side on the
+preview -> refine path -0.23 -> -0.87 mm. Not this rule: fixing 0043's other sides moves the preview box,
+and in the refine frame a line 0.6 mm inside the blue cover (its rim) becomes a layer line that the
+always-chained <= `near_mm` walk takes. Checked whether that walk could get a colour test: of 666
+<= 1 mm steps on the stack sides, 654 are needed, and 0043's looks like V600 0057's needed steps into a
+lower page's art (neutral L* 66-72 outside, dark bluish L* 40-45 inside); support does not separate
+them either. Also 0010 / 0043 sides by <= 0.1 mm. Thick books, New data, synthetic identical.
 
 ## Per-scanner tuning
 Users ask for tuning on the Discord server (https://discord.gg/TAAV8B9WWg) and share scans (an empty bed and
@@ -315,7 +328,7 @@ Data and benchmarks (all on the maintainer's machine):
 - Compare: `benchmarks/klk6/side_mm.py OUT/results.json` (signed mm per side), `side_diff.py OLD NEW`
   and `compare.py OLD NEW` (run with `PYTHONPATH=F:/HasamiData/benchmarks/klk6`). Judge sides in mm
   (within 0.5 / 1 mm), not only IoU >= 0.95; check the bare 200 dpi preview box too (the owner sees it).
-- Current V600 state (0.5.13): all 57 + 26 + 9 + 33 pass; test scans 85% of sides within 0.5 mm, all
+- Current V600 state (0.5.14): all 57 + 26 + 9 + 33 pass; test scans 85% of sides within 0.5 mm, all
   within 1 mm. Known leftovers to beat: see the 0.5.10 and 0.5.11 notes in "Scanner profiles".
 
 ## Ideas not done yet

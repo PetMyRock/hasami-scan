@@ -13,7 +13,8 @@ def test_v600_profile_differs_from_the_default_only_in_its_own_switches():
     ident = {"name", "label", "match", "tuned_on"}
     own = {"min_edge_step", "crease_step", "fine_stack", "stack_by_segment", "stack_jump", "depth_mm",
            "layer_depth_mm", "fine_strong_lines", "shrink_lid_hue", "walk_after_passes",
-           "cover_rim", "paper_colour_edges", "lid_all_round_split_score", "stack_shadow_l"}
+           "cover_rim", "paper_colour_edges", "lid_all_round_split_score", "stack_shadow_l",
+           "dark_edge_l"}
     v600, default = profiles.get("epson-v600"), profiles.DEFAULT
     for f in dataclasses.fields(profiles.Profile):
         if f.name not in ident | own:
@@ -486,3 +487,47 @@ def test_v600_profile_crosses_a_lower_sheet_in_the_lids_shadow(monkeypatch):
         found[name] = (out.bounding_rect()[0] - x0) / mm
     assert found["before"] < -1.0, found
     assert abs(found["epson-v600"]) < 0.3, found
+
+
+def _dark_cover_in_shadow(seed: int = 0, margin: bool = False):
+    """A dark cover with the propped lid's grey shadow, 1.3 mm wide, between it and the lid (or,
+    ``margin``: a top page with its own white margin 1.3 mm wide before dark art)."""
+    from hasami.core.geometry import CropBox
+
+    mm = 300 / 25.4
+    rng = np.random.default_rng(seed)
+    img = np.full((int(120 * mm), int(130 * mm), 3), 205, np.float32)
+    x0, y0, x1, y1 = int(40 * mm), int(10 * mm), int(120 * mm), int(110 * mm)
+    out = x0 - int(round(1.3 * mm))
+    img[y0:y1, out:x1] = 245 if margin else 165
+    img[y0:y1, x0:x1] = 70
+    img = np.clip(img + rng.normal(0, 1.5, img.shape), 0, 255).astype(np.uint8)
+    return img, CropBox.from_xywh(out, y0, x1 - out, y1 - y0), x0, out, mm
+
+
+def test_v600_profile_crosses_the_shadow_beside_a_dark_cover(monkeypatch):
+    # A dark cover (or a top page printed dark to its edge) with a neutral band 1-1.5 mm wide
+    # beside it, darker than the lid: the lid's shadow or the sheets below.  The band is lighter
+    # than the print inside, so it never passed as stack paper and the crop kept it.
+    from hasami.core.toppage import top_page
+
+    img, box, x0, _out, mm = _dark_cover_in_shadow()
+    _with(monkeypatch, dark_edge_l=0.0)
+    found = {}
+    for name in ("before", "epson-v600"):
+        with profiles.use(name):
+            out, _ = top_page(img, box, 300, keep=[(0, 1), (1, -1), (1, 1)])
+        found[name] = (out.bounding_rect()[0] - x0) / mm
+    assert found["before"] < -1.0, found
+    assert abs(found["epson-v600"]) < 0.3, found
+
+
+def test_v600_profile_keeps_a_white_margin_before_dark_art():
+    # The band must be darker than the lid: a top page's own white margin lies on the glass and is
+    # brighter, so the crop stays on the paper's edge.
+    from hasami.core.toppage import top_page
+
+    img, box, _x0, edge, mm = _dark_cover_in_shadow(margin=True)
+    with profiles.use("epson-v600"):
+        out, _ = top_page(img, box, 300, keep=[(0, 1), (1, -1), (1, 1)])
+    assert abs((out.bounding_rect()[0] - edge) / mm) < 0.3
