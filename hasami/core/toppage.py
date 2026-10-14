@@ -345,7 +345,9 @@ def _past_cover_rim(lines, first, S, X, Y, px_mm: float):
     band = _between(S, X, Y, ln, first, pad)
     paper = _between(S, X, Y, (ln[0] - 1.3 * px_mm, ln[1]), ln, pad)
     lid = _between(S, X, Y, first, (first[0] + 0.8 * px_mm, first[1]), pad)
-    if band is None or paper is None or lid is None or paper[0] < prof.light_paper_l:
+    if band is None or paper is None or lid is None:
+        return first
+    if paper[0] < prof.light_paper_l and not prof.rim_print_inside:
         return first
     if (np.hypot(*(band[1:] - paper[1:])) <= prof.max_hue_diff
             or np.hypot(*(band[1:] - lid[1:])) <= prof.max_hue_diff):
