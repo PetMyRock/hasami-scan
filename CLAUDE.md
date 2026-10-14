@@ -339,6 +339,18 @@ before anything replaces them:
    lid, the classical code fitting the edges. The final edge stays with the sub-pixel refinement:
    0.5 mm is ~3 px at 200 dpi, beyond a whole-bed network's resolution.
 
+Status (Oct 14 2026): both PARKED; the rules (0.5.13-0.5.16) took the wins instead. Step 1: the classifier's
+leave-one-book-out gates failed (a held-out book whose stack type no other book shows broke it); its held-out
+fixes pointed at the rule fixes `stack_shadow_l` / `dark_edge_l` / `rim_print_inside`; branch feat/line-classifier
+stays local, unmerged. Step 2: data check only (hasami-data `benchmarks/learned/seg`, report
+`segcheck_2026-10-14.md`): a ~119k-parameter U-Net on 200 dpi tiles, nudging the bare preview box to the rules'
+nearest candidate within 1 mm, fixed 4 of the 5 deep-stack preview boxes (New data 0012, V600 0008 / 0015 / 0016) but
+broke stacks that look like the page (pages printed green to the edge over same-green sheets, cream sheets under a
+cream page): 11 sides better, 14 worse; FAIL. Adding the thick-book stacks to training cut the worse sides 23 -> 14,
+so more stack kinds help. Restart only with deep stacks (>= 3 mm) from 5-6 more books, especially page-like ones,
+whole-bed scans; then rerun the check unchanged before any app work (spec Section 2: V600 switch `seg_preview`,
+ONNX Runtime, preview only).
+
 Deployment: ONNX Runtime on CPU (~15-20 MB more in the installer; check its licence and the
 model's for MIT compatibility). Training needs no GPU at this size. The scans and their truth stay
 private (hasami-data); whether to ship weights trained on them is the owner's call. Tests in this
