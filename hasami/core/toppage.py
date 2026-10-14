@@ -304,7 +304,21 @@ def _stack_goes_on(lines, ln, px_mm: float, n: int = 2, spacing_mm: float | None
     return True
 
 
-def _walk(lines, cur, px_mm: float, S=None, X=None, Y=None):
+def _dark_edge(S, X, Y, ln, cur, lid, px_mm: float) -> bool:
+    """Is ``ln`` a dark item's edge with its shadow (or the sheets below) between it and ``cur``?
+    See ``Profile.dark_edge_l``; ``lid``: the colour outside the chain's first line."""
+    prof = _profile()
+    if not prof.dark_edge_l or lid is None or ln[2] < 0.85 * prof.segments:
+        return False
+    band = _between(S, X, Y, ln, cur, 0.3 * px_mm)
+    inside = _between(S, X, Y, (ln[0] - 1.3 * px_mm, ln[1]), ln, 0.3 * px_mm)
+    if band is None or inside is None:
+        return False
+    return (np.hypot(*band[1:]) <= prof.max_hue_diff and band[0] <= lid[0] - 2.0
+            and inside[0] <= band[0] - prof.dark_edge_l)
+
+
+def _walk(lines, cur, px_mm: float, S=None, X=None, Y=None, lid=None):
     """Follow the layer chain inwards from line ``cur``; its innermost line (see ``_chain``)."""
     for ln in sorted((ln for ln in lines if ln[0] < cur[0]), key=lambda t: -t[0]):
         gap = cur[0] - ln[0]
@@ -313,6 +327,8 @@ def _walk(lines, cur, px_mm: float, S=None, X=None, Y=None):
                 break
             if not _stack_gap(S, X, Y, lines, ln, cur, px_mm, wide=gap > _profile().gap_mm * px_mm) and not (
                     gap <= _profile().gap_mm * px_mm and _stack_goes_on(lines, ln, px_mm)):
+                if gap <= _profile().gap_mm * px_mm and _dark_edge(S, X, Y, ln, cur, lid, px_mm):
+                    return ln  # the item's edge: no page edges inside it
                 break
         cur = ln
     return cur
@@ -364,7 +380,8 @@ def _chain(lines, px_mm: float, S=None, X=None, Y=None, start_out: float | None 
     first = max(start, key=lambda ln: ln[0])
     if not far and S is not None and _profile().cover_rim:
         first = _past_cover_rim(lines, first, S, X, Y, px_mm)
-    cur = _walk(lines, first, px_mm, S, X, Y)
+    lid = None if S is None else _between(S, X, Y, first, (first[0] + 0.8 * px_mm, first[1]), 0.15 * px_mm)
+    cur = _walk(lines, first, px_mm, S, X, Y, lid=lid)
     if far:
         shade = _between(S, X, Y, first, (0.0, first[1]), 0.3 * px_mm)
         paper = _between(S, X, Y, (cur[0] - 1.3 * px_mm, cur[1]), cur, 0.3 * px_mm)
