@@ -267,6 +267,16 @@ always-chained <= `near_mm` walk takes. Checked whether that walk could get a co
 <= 1 mm steps on the stack sides, 654 are needed, and 0043's looks like V600 0057's needed steps into a
 lower page's art (neutral L* 66-72 outside, dark bluish L* 40-45 inside); support does not separate
 them either. Also 0010 / 0043 sides by <= 0.1 mm. Thick books, New data, synthetic identical.
+0.5.15: `rim_print_inside` (`toppage._past_cover_rim`). A navy hard cover's rim (1.3-1.45 mm, L* ~43, b* -13)
+beyond a top page printed dark to its edge (V600 0044) or beyond a lower page's art column (0046) was kept:
+`cover_rim` wanted light paper (L* >= 70) inside the rim, and found L* 36-60. Now the rim's other tests
+decide (uniform along the side, hue unlike the lid's and the inside's, full-length inner line, <= `gap_mm`).
+Fixed: 0044 real +1.20 -> -0.45 (truth line -0.20), 0046 preview -> refine +2.02 -> -0.24 and its bare 200 dpi
+preview box (+2.2 mm). Nothing worse; Thick books, KLK, New data, synthetic identical. Left: 0044 preview (the
+rim's inner line 10/16 at 200 dpi) and refine / app (the chain starts on a shadow line beyond the rim, so the
+rim test never runs; testing the rim after the walk too would cut coloured frames printed on top pages).
+Wider risk: a uniform coloured frame <= 2.2 mm along a top page lying on the lid, with art inside, is now
+taken for a rim.
 
 ## Per-scanner tuning
 Users ask for tuning on the Discord server (https://discord.gg/TAAV8B9WWg) and share scans (an empty bed and
@@ -328,7 +338,7 @@ Data and benchmarks (all on the maintainer's machine):
 - Compare: `benchmarks/klk6/side_mm.py OUT/results.json` (signed mm per side), `side_diff.py OLD NEW`
   and `compare.py OLD NEW` (run with `PYTHONPATH=F:/HasamiData/benchmarks/klk6`). Judge sides in mm
   (within 0.5 / 1 mm), not only IoU >= 0.95; check the bare 200 dpi preview box too (the owner sees it).
-- Current V600 state (0.5.14): all 57 + 26 + 9 + 33 pass; test scans 85% of sides within 0.5 mm, all
+- Current V600 state (0.5.15): all 57 + 26 + 9 + 33 pass; test scans 85% of sides within 0.5 mm, all
   within 1 mm. Known leftovers to beat: see the 0.5.10 and 0.5.11 notes in "Scanner profiles".
 
 ## Ideas not done yet

@@ -14,7 +14,7 @@ def test_v600_profile_differs_from_the_default_only_in_its_own_switches():
     own = {"min_edge_step", "crease_step", "fine_stack", "stack_by_segment", "stack_jump", "depth_mm",
            "layer_depth_mm", "fine_strong_lines", "shrink_lid_hue", "walk_after_passes",
            "cover_rim", "paper_colour_edges", "lid_all_round_split_score", "stack_shadow_l",
-           "dark_edge_l"}
+           "dark_edge_l", "rim_print_inside"}
     v600, default = profiles.get("epson-v600"), profiles.DEFAULT
     for f in dataclasses.fields(profiles.Profile):
         if f.name not in ident | own:
@@ -531,3 +531,23 @@ def test_v600_profile_keeps_a_white_margin_before_dark_art():
     with profiles.use("epson-v600"):
         out, _ = top_page(img, box, 300, keep=[(0, 1), (1, -1), (1, 1)])
     assert abs((out.bounding_rect()[0] - edge) / mm) < 0.3
+
+
+def test_v600_profile_crops_a_cover_rim_off_before_dark_print(monkeypatch):
+    # A navy hard cover's rim beyond a top page printed dark to its edge (or a lower page's art
+    # column just inside the rim): no light paper inside, so the rim was kept.
+    from hasami.core.toppage import top_page
+
+    img, box, x0, mm = _cover_rim()
+    y0, y1 = int(10 * mm), int(110 * mm)
+    rim = x0 - int(round(1.2 * mm))
+    img[y0 - 8:y1 + 8, rim:x0] = (75, 85, 120)
+    img[y0:y1, x0:int(120 * mm)] = (60, 55, 55)
+    _with(monkeypatch, rim_print_inside=False)
+    found = {}
+    for name in ("before", "epson-v600"):
+        with profiles.use(name):
+            out, _ = top_page(img, box, 300, keep=[(0, 1), (1, -1), (1, 1)])
+        found[name] = (out.bounding_rect()[0] - x0) / mm
+    assert found["before"] < -1.0, found
+    assert abs(found["epson-v600"]) < 0.3, found

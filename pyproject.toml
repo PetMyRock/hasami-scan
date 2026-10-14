@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "hasami-scan"
-version = "0.5.14"
+version = "0.5.15"
 description = "Hasami Scan: a VueScan-style scanning app with smarter auto-crop (multi-photo, white borders, deskew, booklets)."
 readme = "README.md"
 requires-python = ">=3.10"
