@@ -288,7 +288,10 @@ saddle-stitched centre spreads (V600 0040 -2.5, 0039 preview +2.0): flat cream p
 the fold; the only strong valley is where the facing page's art begins, 0.3-0.5 mm off. A staple-line cue was
 considered and dropped (owner): only these 2 of the 10 stapled booklets (0029-0040; the others show a crease and are
 right), the staples are not the signal there, and it would risk every other fold; creases found on the wrong valley (V600 0016 ~0.9, KLK6 0019 / 0022 / 0023
-0.5-0.8, New data 0002 / 0004 soft folds ~0.65).
+0.5-0.8, New data 0002 / 0004 soft folds ~0.65). Looked at and left (owner): on all 22 such sides the chosen valley is lopsided
+(one side rises >= 2x the other) and on 18 the truth is 0.7-1.0 mm towards the steeper side (the junction with the
+facing page, not the valley's bottom), but 39 of the 277 right folds are as lopsided and New data 0002's truth is on
+the other side: no cue tells which convention a fold follows.
 
 ## Per-scanner tuning
 Users ask for tuning on the Discord server (https://discord.gg/TAAV8B9WWg) and share scans (an empty bed and
