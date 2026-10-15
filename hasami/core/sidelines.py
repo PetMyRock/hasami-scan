@@ -9,6 +9,7 @@ side, and dark valleys within 4 mm of a spine.  Spec: docs/specs/2026-10-15-edge
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 
 import cv2
@@ -129,3 +130,109 @@ def _merge(lines: list[SideLine]) -> list[SideLine]:
         if all(abs(ln.offset_mm - k.offset_mm) > MERGE_MM for k in kept):
             kept.append(ln)
     return sorted(kept, key=lambda l: l.offset_mm)
+
+
+FAR_MM = 99.0  # signals: no such line
+OWN_MM = 0.3  # a line this close to the paper edge under the side is that edge
+CREASE_MM = 0.5
+CROWD_MM = 3.0
+STRONG = 0.85  # a page edge runs along (nearly) the whole side
+
+#: The "check this side" rule: an OR of (signal, threshold) conditions, fitted by the snap check in the
+#: private data repo (spec Section 3).  Empty: no flags.
+CHECK_RULE: tuple[tuple[str, float], ...] = ()
+
+
+def normal_hit(p, dd, m, nrm) -> float | None:
+    """Where the line through ``p`` along ``dd`` crosses the line from ``m`` along ``nrm``: the distance
+    from ``m`` in ``nrm``'s units, or None when the two run parallel."""
+    den = nrm[0] * dd[1] - nrm[1] * dd[0]
+    if abs(den) < 1e-9:
+        return None
+    return float(((p[0] - m[0]) * dd[1] - (p[1] - m[1]) * dd[0]) / den)
+
+
+def to_image(line: SideLine, box: CropBox, name: str, px_mm: float, inset_mm: float = 0.0):
+    """A side's line as a point (at the side's middle) and a unit direction in the image (px);
+    ``inset_mm`` moves it inwards."""
+    a, e, d, n = _side(box, KEY[name])
+    p = (a + e) / 2 + n * (line.offset_mm - inset_mm) * px_mm
+    dd = d + n * line.slope
+    return p, dd / np.linalg.norm(dd)
+
+
+def from_image(p, dd, box: CropBox, name: str, px_mm: float) -> tuple[float, float] | None:
+    """(offset_mm, slope) of an image line against side ``name`` of ``box``; None when it runs across it."""
+    a, e, d, n = _side(box, KEY[name])
+    along = float(np.dot(dd, d))
+    t = normal_hit(p, dd, (a + e) / 2, n)
+    if t is None or abs(along) < 1e-9:
+        return None
+    return t / px_mm, float(np.dot(dd, n)) / along
+
+
+def box_lines(image: np.ndarray, box: CropBox, dpi: float) -> dict[str, list[SideLine]]:
+    """``side_lines`` of a final box as ``detect`` returns it.  A spread box (``meta["spread_pages"]``)
+    gets its pages' lines on the spread sides they lie along (outward normal within 10 deg, side's
+    middle within 1 mm of the spread side); the pages' spines are no spread side and give none."""
+    if "spread_pages" not in box.meta:
+        return side_lines(image, box, dpi)
+    from .booklet import _from_frame
+
+    px_mm = dpi / MM_PER_INCH
+    out: dict[str, list[SideLine]] = {name: [] for name in SIDE_NAMES}
+    for i, corners in enumerate(box.meta["spread_pages"]):
+        page = _from_frame(box, corners)
+        page.meta = {"keep_sides": box.meta.get("spread_keep", [[], []])[i]}
+        for pname, lines in side_lines(image, page, dpi).items():
+            pa, pe, _pd, pn = _side(page, KEY[pname])
+            for sname in SIDE_NAMES:
+                sa, se, _sd, sn = _side(box, KEY[sname])
+                if float(pn @ sn) < math.cos(math.radians(10)) or abs(float(((pa + pe) / 2 - (sa + se) / 2) @ sn)) > px_mm:
+                    continue
+                for ln in lines:
+                    got = from_image(*to_image(ln, page, pname, px_mm), box, sname, px_mm)
+                    if got is not None:
+                        out[sname].append(SideLine(got[0], got[1], ln.support, ln.kind))
+    return {name: _merge(lines) for name, lines in out.items()}
+
+
+def spine_names(box: CropBox) -> set[str]:
+    """The names of a box's spine sides (``meta["keep_sides"]``)."""
+    keep = {tuple(k) for k in box.meta.get("keep_sides", ())}
+    return {name for name, key in KEY.items() if key in keep}
+
+
+def signals(lines: list[SideLine], margin_mm: float, spine: bool) -> dict[str, float]:
+    """What a flag rule looks at on one side, from the paper edge under it (a box side lies
+    ``margin_mm`` inside the edge auto-crop found): ``near_strong`` the distance to the nearest other
+    line with support >= STRONG (FAR_MM: none) and ``near_strong_at`` its signed offset (+ = out);
+    ``own_support`` the support of the line at the edge (0: none within OWN_MM); ``no_crease`` 1 for a
+    spine without a valley line within CREASE_MM; ``crowd`` the lines within CROWD_MM."""
+    rel = [(ln.offset_mm - margin_mm, ln) for ln in lines]
+    strong = [x for x, ln in rel if ln.support >= STRONG and abs(x) > OWN_MM]
+    at = min(strong, key=abs) if strong else 0.0
+    return {"near_strong": abs(at) if strong else FAR_MM, "near_strong_at": at,
+            "own_support": max((ln.support for x, ln in rel if abs(x) <= OWN_MM), default=0.0),
+            "no_crease": float(spine and not any(abs(x) <= CREASE_MM for x, ln in rel if ln.kind == "crease")),
+            "crowd": float(sum(abs(x) <= CROWD_MM for x, _ in rel))}
+
+
+_FIRES = {"near_strong": lambda v, t: v <= t, "own_support": lambda v, t: v < t,
+          "no_crease": lambda v, t: v >= t, "crowd": lambda v, t: v >= t}
+
+
+def check_reason(sig: dict, rule) -> str | None:
+    """Why a side should be checked under ``rule`` (its first condition that fires), or None."""
+    for name, t in rule:
+        if not _FIRES[name](sig[name], t):
+            continue
+        if name == "near_strong":
+            at = sig["near_strong_at"]
+            return f"another edge {abs(at):.1f} mm further {'out' if at > 0 else 'in'}"
+        if name == "own_support":
+            return "the edge here is faint"
+        if name == "no_crease":
+            return "no clear crease at the fold"
+        return f"{int(sig['crowd'])} edges within 3 mm"
+    return None
