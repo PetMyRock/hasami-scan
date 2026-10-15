@@ -298,6 +298,12 @@ there the top page's outer 1-3 mm reads 6-8 L* darker (79-81) before the sharp d
 part is blank cream margin, no print. Following the paper outwards to the drop (within 6 L*) fixed 0006 / 0026 but
 walked onto the stack on 9 Key Art Collection and KLK7 sides (up to +1.25 mm; 11 better, 31 worse): the darker
 margin and the stack band are equally bright.
+Multi mode, V600 misc (looked at and left, owner, Oct 2026; mm without the 0.25 crop margin): 0022, a dark grey
+print on the black bed, ends on its two short sides in a soft ramp (L* 29 -> 5 over ~1.5 mm) before the black lid;
+the truth is the ramp's foot, the edge refinement takes its steepest part: cut -0.54 / -0.70 (real), -0.98 / -0.41
+(app). The cut part is the card's dim edge, no print. Following the ramp out to the lid would act on every item on
+the black bed, and the sharp-edged ones (0024-0026, 0041, 0042) also tail off 0.3-0.4 mm past their truth. 0021's
+second print +0.91 is the real scenario only (a grey lid-shadow band beside it); the app path is +0.38.
 
 ## Per-scanner tuning
 Users ask for tuning on the Discord server (https://discord.gg/TAAV8B9WWg) and share scans (an empty bed and
