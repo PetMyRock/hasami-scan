@@ -37,7 +37,7 @@ import cv2
 import numpy as np
 
 from . import candidates, profiles
-from .geometry import CropBox, reading_order
+from .geometry import CropBox, pin_sides, reading_order
 
 MM_PER_INCH = 25.4
 #: Lab lightness below which tones are treated as black (see ``_analyze``).
@@ -1178,7 +1178,9 @@ def refine(image: np.ndarray, boxes: list[CropBox], settings: AutoCropSettings |
     Typical use: detect on a low-resolution preview, scale the boxes to the
     final scan, then call ``refine`` so edges land exactly on the high-res
     image (and small shifts between the two passes are corrected).  Manual
-    boxes are returned untouched, and sides listed in a box's
+    boxes are returned untouched, except auto-crop boxes with one to three
+    sides moved by hand (``meta["pinned_sides"]``): their other sides are re-refined, the pinned
+    ones and the angle stay (``geometry.pin_sides``).  Sides listed in a box's
     ``meta["keep_sides"]`` (a booklet page's spine) are not moved.
     """
     st = settings or AutoCropSettings()
@@ -1196,27 +1198,34 @@ def _refine(image: np.ndarray, boxes: list[CropBox], st: AutoCropSettings, dpi: 
     margin_px = st.margin_mm * dpi / MM_PER_INCH
     r = radius if radius is not None else max(4.0, 1.5 * dpi / 100.0)
     for b in boxes:
-        if b.manual:
-            out.append(b)
+        pinned = set(b.meta.get("pinned_sides", ()))
+        if b.manual and not (b.meta.get("auto_id") and 0 < len(pinned) < 4):
+            out.append(b)  # drawn, edited as a whole, or edited before pins existed
             continue
-        if st.mode == "booklet" and ("top_page" in b.meta or "spread_pages" in b.meta):
-            # Booklet pages end at the top page's edge: find it again (the plain edge snap
-            # would jump to a page-stack line next to it).
-            from .booklet import refine_booklet
-
-            out.append(refine_booklet(image, b, st, dpi))
-            continue
-        # Undo the margin so that refinement starts on the edge itself.
-        start = b.inset(-margin_px)
-        keep = {tuple(k) for k in b.meta.get("keep_sides", [])}
-        nb = _refine_edges(L, start, r, shadow_px=1.0 * dpi / MM_PER_INCH, skip=keep or None, C=C)
-        if not st.deskew:
-            x0, y0, x1, y1 = nb.bounding_rect()
-            nb = replace(nb, cx=(x0 + x1) / 2, cy=(y0 + y1) / 2, w=x1 - x0, h=y1 - y0, angle=0.0)
-        elif abs(nb.angle) < st.snap_angle:
-            nb = replace(nb, angle=0.0)
-        out.append(nb.inset(margin_px).clamp_to(W, H))
+        nb = _refine_box(image, L, C, b, st, dpi, r, margin_px, W, H)
+        out.append(pin_sides(b, nb, pinned).clamp_to(W, H) if b.manual else nb)
     return out
+
+
+def _refine_box(image: np.ndarray, L: np.ndarray, C: np.ndarray | None, b: CropBox, st: AutoCropSettings,
+                dpi: float, r: float, margin_px: float, W: int, H: int) -> CropBox:
+    """One auto-crop box re-refined (see ``refine``)."""
+    if st.mode == "booklet" and ("top_page" in b.meta or "spread_pages" in b.meta):
+        # Booklet pages end at the top page's edge: find it again (the plain edge snap
+        # would jump to a page-stack line next to it).
+        from .booklet import refine_booklet
+
+        return refine_booklet(image, b, st, dpi)
+    # Undo the margin so that refinement starts on the edge itself.
+    start = b.inset(-margin_px)
+    keep = {tuple(k) for k in b.meta.get("keep_sides", [])}
+    nb = _refine_edges(L, start, r, shadow_px=1.0 * dpi / MM_PER_INCH, skip=keep or None, C=C)
+    if not st.deskew:
+        x0, y0, x1, y1 = nb.bounding_rect()
+        nb = replace(nb, cx=(x0 + x1) / 2, cy=(y0 + y1) / 2, w=x1 - x0, h=y1 - y0, angle=0.0)
+    elif abs(nb.angle) < st.snap_angle:
+        nb = replace(nb, angle=0.0)
+    return nb.inset(margin_px).clamp_to(W, H)
 
 
 def debug_overlay(image: np.ndarray, boxes: list[CropBox], truth: list[CropBox] | None = None) -> np.ndarray:
