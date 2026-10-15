@@ -326,6 +326,18 @@ scan folder". Owner sends these when a crop is wrong.
 (drag / Skew made them `manual`, and before they came back on the next page - owner, after
 fixing a box and pressing Test scan). Auto-crop on the same preview still keeps edits.
 
+## Crop cases (0.5.17, owner)
+Opt-in (`AppSettings.cases.enabled`, Crop tab; folder `cases.folder`, "" = Documents/Hasami Scan/Crop cases).
+`hasami/cases.py` (no Qt): a case folder = `preview.jpg` (whole bed, preview dpi) + `scan.jpg` (the first page's
+uncropped scanned area, <= 400 dpi, both JPEG q95, scanner frame) + `case.json` (format 1: scanner, profile, crop
+settings, auto and final boxes in bed mm, `diff_boxes` edits: moved per side + = outwards / deleted / drawn).
+`Session.detect_on_preview` tags auto boxes `meta["auto_id"]` (unique per session) and keeps `auto_mm`;
+`run_scan` -> `_capture` after page 1 keeps `last_case` and writes it when corrected (never in Off mode; boxes
+carried from an earlier page, `meta["carried"]`, are not edits); errors become a status line, never a failed scan.
+Scan > "Save this case" (`save_last_case`), File > "Share crop cases..." (`gui/cases_dialog.py`: one zip per case
+in `To share`). Spec `docs/specs/2026-10-15-crop-cases-design.md`. Next: part 2, snapping box edges to the engine's
+candidate lines and "check this side" flags (own spec); a hasami-data tool to turn cases into truth records.
+
 ## Next: learned cropping (planned, owner approved Oct 13 2026)
 0.5.12: candidate collector and patch/feature extraction (no crop changes); dataset + baseline in
 hasami-data benchmarks/learned.

@@ -83,6 +83,13 @@ Scans are used only for testing and are never published.
 own folder with its own file name (Output → Test scans). Press it when the
 auto-crop gets something wrong, and send the file.
 
+### Helping tune auto-crop
+
+Turn on **Crop > Save my corrections as crop cases**. Whenever you fix an auto-crop box before scanning, Hasami
+Scan keeps the preview, the scanned area (at most 400 dpi) and the boxes in a "crop case" (Documents/Hasami
+Scan/Crop cases). **Scan > Save this case** keeps one when the crop was right. Nothing is uploaded: use **File >
+Share crop cases...** to zip the cases you choose and post them on the Discord server.
+
 ## Use
 
 1. Put the item face down on the glass and close the lid.

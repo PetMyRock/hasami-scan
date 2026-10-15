@@ -12,3 +12,14 @@ warnings.filterwarnings("ignore", category=RuntimeWarning)
 os.environ["XDG_CONFIG_HOME"] = tempfile.mkdtemp(prefix="scanner-test-config-")
 os.environ["APPDATA"] = os.environ["XDG_CONFIG_HOME"]
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+import pytest  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def _own_config_folder(tmp_path_factory, monkeypatch):
+    """Each test gets its own settings folder: the GUI saves its settings on close and the CLI loads them, so
+    one test's booklet-mode settings made another test's CLI crop of three photos find two."""
+    folder = tmp_path_factory.mktemp("config")
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(folder))
+    monkeypatch.setenv("APPDATA", str(folder))
