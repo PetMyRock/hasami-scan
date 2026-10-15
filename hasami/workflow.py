@@ -15,6 +15,7 @@ from typing import Callable
 
 import numpy as np
 
+from . import cases
 from .core import autocrop
 from .core.geometry import CropBox, extract
 from .core.output import next_filenames, save_image, save_items, save_raw_items
@@ -71,6 +72,13 @@ class Session:
         self.preview: ScanResult | None = None
         #: Crop boxes in bed millimetres.
         self.boxes_mm: list[CropBox] = []
+        #: The boxes auto-crop proposed (bed mm, with meta["auto_id"]): what a crop case compares against.
+        self.auto_mm: list[CropBox] = []
+        self._auto_seq = 0
+        #: The last scan's crop case (crop cases on), its folder once written, and its status line.
+        self.last_case: cases.CaseData | None = None
+        self.last_case_path: Path | None = None
+        self.case_note = ""
         #: Called with each :class:`LiveImage` of a preview or scan (to show it coming in).
         self.live: Callable[[LiveImage], None] | None = None
 
@@ -127,6 +135,9 @@ class Session:
         # A new preview (usually the next page): boxes auto-crop found are replaced, also when
         # edited by hand (dragged, Skew); only boxes drawn from scratch stay.
         self.boxes_mm = [b for b in self.boxes_mm if b.meta.get("drawn")]
+        self.last_case, self.last_case_path = None, None  # "Save this case" means the page on screen
+        for b in self.boxes_mm:
+            b.meta["carried"] = True  # from an earlier page: not a correction of this one
         self.detect_on_preview()
         return self.preview
 
@@ -140,7 +151,14 @@ class Session:
         found = [] if off else autocrop.detect(p.image, self.crop_settings(), dpi=p.dpi)
         origin = (p.area_mm[0], p.area_mm[1])
         manual = [b for b in self.boxes_mm if b.manual]
-        self.boxes_mm = manual + [box_px_to_mm(b, p.dpi, origin) for b in found]
+        found_mm = [box_px_to_mm(b, p.dpi, origin) for b in found]
+        for b in found_mm:
+            self._auto_seq += 1
+            b.meta["auto_id"] = f"a{self._auto_seq}"
+        kept = {b.meta.get("auto_id") for b in manual} - {None}
+        self.auto_mm = ([a for a in self.auto_mm if a.meta.get("auto_id") in kept]
+                        + [replace(b, meta=dict(b.meta)) for b in found_mm])
+        self.boxes_mm = manual + found_mm
         return self.boxes_mm
 
     def preview_boxes_px(self) -> list[CropBox]:
@@ -206,10 +224,49 @@ class Session:
                     boxes = autocrop.refine(result.image, boxes, self.crop_settings(), dpi=result.dpi)
             else:
                 boxes = autocrop.detect(result.image, self.crop_settings(), dpi=result.dpi)
+            if page_no == 0:
+                self._capture(result, crops, status)
             outcomes.append(self._finish(result, boxes, save, status))
             if cancel is not None and cancel.is_set():
                 break
         return outcomes
+
+    def _capture(self, result: ScanResult, final_mm: list[CropBox], status: StatusFn | None) -> None:
+        """Crop cases: keep this scan's case and write it when an auto box was corrected.  Never raises."""
+        self.last_case, self.last_case_path, self.case_note = None, None, ""
+        if not self.settings.cases.enabled or self.preview is None or self.device_id.startswith("file:"):
+            return  # (an opened image: no lid, not the scanner frame, and its id is a local path)
+        try:
+            scan, saved_dpi = cases.downscale(result.image, result.dpi)
+            info = self.device.info if self.device is not None else None
+            c = self.settings.crop
+            self.last_case = cases.CaseData(
+                preview=self.preview.image, preview_dpi=self.preview.dpi,
+                preview_area_mm=tuple(self.preview.area_mm), scan=scan, scan_dpi_saved=saved_dpi,
+                scan_dpi=result.dpi, scan_area_mm=tuple(result.area_mm),
+                auto=[replace(b, meta=dict(b.meta)) for b in self.auto_mm],
+                final=[replace(b, meta=dict(b.meta)) for b in final_mm],
+                scanner_id=self.device_id, scanner_name=info.name if info else "", profile=self.profile().name,
+                crop={"mode": c.mode, "booklet_output": c.booklet_output, "booklet_rtl": c.booklet_rtl,
+                      "margin_mm": c.margin_mm, "edge_refine": c.edge_refine, "rotate": c.rotate})
+            edits = cases.diff_boxes(self.last_case.auto, self.last_case.final)
+            if c.mode != "off" and cases.corrected(edits):  # Off: drawing boxes is how it works
+                self.last_case_path = cases.write_case(cases.folder_of(self.settings.cases), self.last_case)
+                self.case_note = f"Saved crop case {self.last_case_path.name} ({cases.summary(edits, c.rotate)})"
+        except Exception as e:  # noqa: BLE001 - a crop case must never break a scan
+            self.case_note = f"Could not save the crop case: {e}"
+        if status and self.case_note:
+            status(self.case_note)
+
+    def save_last_case(self) -> Path | None:
+        """"Save this case": write the last scan's case (reason "saved"); its path when already written,
+        None without one (crop cases off, no scan yet)."""
+        if self.last_case is None:
+            return None
+        if self.last_case_path is None:
+            self.last_case.reason = "saved"
+            self.last_case_path = cases.write_case(cases.folder_of(self.settings.cases), self.last_case)
+        return self.last_case_path
 
     def run_test_scan(self, progress: ProgressFn | None = None, cancel: threading.Event | None = None,
                       status: StatusFn | None = None) -> tuple[ScanResult, Path]:

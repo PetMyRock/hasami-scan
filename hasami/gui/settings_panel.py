@@ -123,6 +123,12 @@ TABS: list[tuple[str, list[Field]]] = [
         Field("crop", "edge_refine", "Precise edges (full resolution)"),
         Field("crop", "border_search_mm", "White border search (mm)", lo=0, hi=40, step=1, decimals=0,
               tip="How far beyond the image to look for a print's white border"),
+        Field("cases", "enabled", "Save my corrections as crop cases (to help tune auto-crop)",
+              tip="When you correct an auto-crop box, keep the preview, the scanned area and the boxes in the "
+                  "case folder (File > Share crop cases... to send some on Discord).  Off by default; nothing "
+                  "is ever uploaded."),
+        Field("cases", "folder", "Crop case folder", kind="folder", enabled_if=lambda st: st.cases.enabled,
+              tip="Empty: Documents/Hasami Scan/Crop cases"),
     ]),
     ("Filter", [
         Field("color", "descreen", "Descreen", [("Off", "off"), ("Auto (detect print screen)", "auto"), ("On", "on")],

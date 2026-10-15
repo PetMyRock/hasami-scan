@@ -28,7 +28,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from .. import __version__, updates
+from .. import __version__, cases, updates
 from ..devices.base import list_devices
 from ..settings import load_settings, save_settings
 from ..workflow import Session, box_mm_to_px
@@ -188,6 +188,11 @@ class MainWindow(QMainWindow):
                                "Turn the preview and the saved scans 90° clockwise")
         self.a_folder = act("Open output folder", self.open_output_folder)
         self.a_test_folder = act("Open test scan folder", self.open_test_folder)
+        self.a_save_case = act("Save this case", self.save_case,
+                               tip="Keep this scan's preview, scanned area and boxes as a crop case (Crop tab), "
+                                   "also when no box was corrected")
+        self.a_share_cases = act("Share crop cases...", self.share_cases,
+                                 tip="Zip saved crop cases to post on the Discord server, or delete them")
         for a in (self.a_open, self.a_preview, self.a_scan, self.a_autocrop, self.a_delete, self.a_clear):
             tb.addAction(a)
         tb.addSeparator()
@@ -208,11 +213,13 @@ class MainWindow(QMainWindow):
         m.addAction(self.a_open)
         m.addAction(self.a_folder)
         m.addAction(self.a_test_folder)
+        m.addAction(self.a_share_cases)
         m.addSeparator()
         m.addAction(act("Save settings", lambda: save_settings(self.settings)))
         m.addAction(act("Quit", self.close, "Ctrl+Q"))
         m = self.menuBar().addMenu("&Scan")
-        for a in (self.a_preview, self.a_scan, self.a_test, self.a_autocrop, self.a_delete, self.a_clear):
+        for a in (self.a_preview, self.a_scan, self.a_test, self.a_save_case, self.a_autocrop, self.a_delete,
+                  self.a_clear):
             m.addAction(a)
         m = self.menuBar().addMenu("&View")
         for a in (self.a_rot_left, self.a_rot_right, self.a_zoom_in, self.a_zoom_out, self.a_fit):
@@ -226,6 +233,7 @@ class MainWindow(QMainWindow):
         m.addAction(self.a_auto_update)
         m.addSeparator()
         m.addAction(act("About", self.about))
+        self._update_case_actions()
 
     # --------------------------------------------------------------- updates
     def _toggle_auto_update(self, *_) -> None:
@@ -337,6 +345,7 @@ class MainWindow(QMainWindow):
             w.setEnabled(not busy)
         for a in (self.a_preview, self.a_scan, self.a_test, self.a_open):
             a.setEnabled(not busy)
+        self._update_case_actions(busy)
         self.progress.setVisible(busy)
         self.cancel_btn.setVisible(busy)
         # A moving bar until the scanner reports progress: many drivers (e.g. Epson's
@@ -557,6 +566,11 @@ class MainWindow(QMainWindow):
     def on_setting_changed(self, section: str, name: str) -> None:
         self._save_timer.start()  # keep the saved settings current too
         self._cropped_timer.start()
+        if section == "cases":
+            if not self.settings.cases.enabled:
+                self.session.last_case, self.session.last_case_path = None, None  # nothing kept while off
+            self._update_case_actions()
+            return
         if (section, name) == ("input", "show_all_devices"):
             self._devices_listed(getattr(self, "_devices", []))
             return
@@ -591,12 +605,14 @@ class MainWindow(QMainWindow):
         self.tabs.setCurrentWidget(self.results)
         areas = "; ".join(f"{oc.scan.area_mm[2]:.0f} x {oc.scan.area_mm[3]:.0f} mm at {oc.scan.dpi:.0f} dpi"
                           for oc in outcomes)
-        self.set_status(f"Saved {n} item(s) to {self.settings.output.path} (scanned {areas})")
+        msg = f"Saved {n} item(s) to {self.settings.output.path} (scanned {areas})"
+        self.set_status(f"{msg}. {self.session.case_note}" if self.session.case_note else msg)
         notes = sorted({oc.scan.note for oc in outcomes if oc.scan.note})
         if notes:
             QMessageBox.warning(self, "Hasami Scan", "\n".join(notes))
         # The next preview should look for new items.
         self.session.boxes_mm = [b for b in self.session.boxes_mm if b.manual]
+        self._update_case_actions()
 
     def do_test_scan(self) -> None:
         """The whole bed at the test resolution, saved uncropped to the test scan folder."""
@@ -644,6 +660,23 @@ class MainWindow(QMainWindow):
         path = self.settings.output.path
         path.mkdir(parents=True, exist_ok=True)
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(path)))
+
+    def _update_case_actions(self, busy: bool = False) -> None:
+        self.a_save_case.setEnabled(not busy and self.settings.cases.enabled and self.session.last_case is not None)
+
+    def save_case(self) -> None:
+        try:
+            path = self.session.save_last_case()
+        except Exception as e:  # noqa: BLE001 - shown to the user
+            QMessageBox.warning(self, "Hasami Scan", f"Could not save the crop case: {e}")
+            return
+        if path is not None:
+            self.set_status(f"Saved crop case {path.name} to {path.parent}")
+
+    def share_cases(self) -> None:
+        from .cases_dialog import CasesDialog
+
+        CasesDialog(cases.folder_of(self.settings.cases), self).exec()
 
     def open_test_folder(self) -> None:
         path = self.settings.output.test_path
