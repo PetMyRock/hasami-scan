@@ -15,6 +15,9 @@ from typing import Iterable, Sequence
 import cv2
 import numpy as np
 
+#: A box's sides by name, in its own frame (top = towards -y at angle 0), in the order of ``corners()``' pairs.
+SIDE_NAMES = ("top", "right", "bottom", "left")
+
 
 def normalize_angle(w: float, h: float, angle: float) -> tuple[float, float, float]:
     """Return an equivalent ``(w, h, angle)`` with the angle in ``(-45, 45]``."""
