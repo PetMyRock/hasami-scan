@@ -62,12 +62,21 @@ class UpdateSettings:
 
 
 @dataclass
+class CaseSettings:
+    #: Save crop cases (preview + scanned area + boxes) when auto-crop boxes were corrected.
+    enabled: bool = False
+    #: Where cases go; "" = Documents/Hasami Scan/Crop cases.
+    folder: str = ""
+
+
+@dataclass
 class AppSettings:
     input: InputSettings = field(default_factory=InputSettings)
     crop: AutoCropSettings = field(default_factory=AutoCropSettings)
     color: ProcessSettings = field(default_factory=ProcessSettings)
     output: OutputSettings = field(default_factory=OutputSettings)
     updates: UpdateSettings = field(default_factory=UpdateSettings)
+    cases: CaseSettings = field(default_factory=CaseSettings)
 
 
 #: Files carried over from the old settings folder ("scanner", before 0.4.2).
