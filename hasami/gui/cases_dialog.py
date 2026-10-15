@@ -16,8 +16,9 @@ from ..core.geometry import CropBox
 from .preview import to_qimage
 
 DISCORD = "https://discord.gg/TAAV8B9WWg"
-NOTE = ("Each case contains scans of your item (the preview and the scanned area). Share only what you are happy "
-        f"to share. Post the zips in the tuning channel on the Hasami Scan Discord: {DISCORD}")
+NOTE = ("Each case contains scans of your item (the preview and the scanned area). Post the zips in the tuning "
+        f"channel on the Hasami Scan Discord: {DISCORD}. The members of that channel can see what you post; it is "
+        "used only to tune auto-crop and is not published anywhere else. Share only what you are happy to share.")
 THUMB = 160
 
 

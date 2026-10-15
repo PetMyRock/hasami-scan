@@ -417,3 +417,10 @@ def test_summary_names_sides_as_shown_after_rotation():
     edits = cases.diff_boxes([a], [_edit(a, h=a.h + 4.2, cy=a.cy + 2.1)])
     assert cases.summary(edits, turns=1) == "left edge 4.2 mm out"  # 90 deg right: the bottom shows on the left
     assert cases.summary(edits, turns=2) == "top edge 4.2 mm out"
+
+
+def test_the_zip_readme_says_who_can_see_a_posted_case():
+    from hasami import cases
+
+    assert "members of that channel can see" in cases.README
+    assert "never published" not in cases.README

@@ -171,3 +171,10 @@ def test_turning_crop_cases_off_drops_the_kept_case(app, tmp_path):
         QThreadPool.globalInstance().waitForDone(10000)
         app.processEvents()
         win.close()
+
+
+def test_the_share_note_says_who_can_see_posted_zips():
+    from hasami.gui.cases_dialog import NOTE
+
+    assert "members of that channel can see what you post" in NOTE
+    assert "Share only what you are happy to share" in NOTE
