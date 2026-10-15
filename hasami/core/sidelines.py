@@ -150,8 +150,9 @@ CROWD_MM = 3.0
 STRONG = 0.85  # a page edge runs along (nearly) the whole side
 
 #: The "check this side" rule: an OR of (signal, threshold) conditions, fitted by the snap check in the
-#: private data repo (spec Section 3).  Empty: no flags.
-CHECK_RULE: tuple[tuple[str, float], ...] = ()
+#: private data repo (hasami-data benchmarks/learned/snapcheck_2026-10-15.md: on held-out books 11.2% of the
+#: sides flagged, 12 of the 18 sides > 0.5 mm off caught).  Empty: no flags.
+CHECK_RULE: tuple[tuple[str, float], ...] = (("no_crease", 0.5), ("crowd", 8))
 
 
 def normal_hit(p, dd, m, nrm) -> float | None:

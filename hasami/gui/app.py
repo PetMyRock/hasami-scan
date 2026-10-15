@@ -523,6 +523,9 @@ class MainWindow(QMainWindow):
                 self.set_status("Booklet: the whole spread as one image")
             else:
                 self.set_status(f"Booklet: cropping the fully visible page{'s' if len(boxes) > 1 else ''}")
+            n = sum(len(b.meta.get("check_sides") or {}) for b in boxes)
+            if n:
+                self.set_status(f"{self.status_label.text()}  ({n} side{'s' if n != 1 else ''} to check)")
         else:
             self.set_status(f"Found {len(boxes)} item(s). Drag to adjust, drag on empty space to add a crop.")
         if mode != "off":

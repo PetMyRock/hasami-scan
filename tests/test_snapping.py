@@ -76,3 +76,24 @@ def test_snap_lines_px_are_in_the_preview_frame(tmp_path):
             for a, b in zip(ls, px[aid][name]):
                 assert b.p == pytest.approx(((a.p[0] - p.area_mm[0]) * f - 0.5, (a.p[1] - p.area_mm[1]) * f - 0.5))
                 assert b.d == a.d and b.support == a.support and b.kind == a.kind
+
+
+def test_flags_name_the_sides_the_rule_fires_on(tmp_path, monkeypatch):
+    from hasami.core import sidelines
+
+    monkeypatch.setattr(sidelines, "CHECK_RULE", (("crowd", 0),))  # fires on every side
+    s = _session(tmp_path)
+    s.run_preview()
+    b = s.boxes_mm[0]
+    assert set(b.meta["check_sides"]) == set(SIDE_NAMES)
+    assert all(r.endswith("edges within 3 mm") for r in b.meta["check_sides"].values())
+    assert s.auto_mm[0].meta["check_sides"] == b.meta["check_sides"]  # crop cases see the flags
+
+
+def test_no_flags_when_the_rule_never_fires(tmp_path, monkeypatch):
+    from hasami.core import sidelines
+
+    monkeypatch.setattr(sidelines, "CHECK_RULE", (("crowd", 999),))
+    s = _session(tmp_path)
+    s.run_preview()
+    assert all("check_sides" not in b.meta for b in s.boxes_mm)

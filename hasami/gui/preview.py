@@ -25,6 +25,7 @@ from PySide6.QtWidgets import (
     QGraphicsPixmapItem,
     QGraphicsPolygonItem,
     QGraphicsScene,
+    QGraphicsSceneHoverEvent,
     QGraphicsView,
     QLabel,
 )
@@ -35,6 +36,7 @@ from ..core.sidelines import normal_hit
 ACCENT = QColor(255, 72, 120)
 ACCENT_FILL = QColor(255, 72, 120, 40)
 LOW_CONF = QColor(255, 170, 0)
+CHECK = QColor(230, 150, 0)  # "check this side"
 HANDLE = 9.0  # handle size in screen pixels
 BLANK = (38, 38, 44)  # an empty preview: the view's own background
 PLACEHOLDER = (128, 128, 128)  # where a preview or scan is about to come in (VueScan: grey)
@@ -219,6 +221,8 @@ class CropItem(QGraphicsObject):
 
     def hoverMoveEvent(self, event) -> None:
         kind = self._hit(event.pos())
+        reason = self.box.meta.get("check_sides", {}).get(SIDE_NAMES[int(kind[1])]) if kind[0] == "s" else None
+        self.setToolTip(f"Check this side: {reason}" if reason else "")
         if kind == "move":
             self.setCursor(Qt.SizeAllCursor)
         elif kind == "rot":
@@ -233,7 +237,8 @@ class CropItem(QGraphicsObject):
             else:
                 diag = (i % 2 == 0) != bool(turned)
                 self.setCursor(Qt.SizeFDiagCursor if diag else Qt.SizeBDiagCursor)
-        super().hoverMoveEvent(event)
+        if isinstance(event, QGraphicsSceneHoverEvent):
+            super().hoverMoveEvent(event)
 
     # ---------------------------------------------------------------- drawing
     def paint(self, painter: QPainter, option, widget=None) -> None:
@@ -250,6 +255,13 @@ class CropItem(QGraphicsObject):
             gc.setAlphaF(0.35 + 0.65 * min(1.0, max(0.0, (support - 0.6) / 0.4)))
             painter.setPen(QPen(gc, 0))  # cosmetic: 1 screen px
             painter.drawLine(p0, p1)
+        corners = self.box.corners()
+        for name in self.box.meta.get("check_sides", {}):
+            a, b = ((0, 1), (1, 2), (2, 3), (3, 0))[SIDE_NAMES.index(name)]
+            painter.setPen(QPen(CHECK, 3.0 * s))
+            painter.drawLine(QPointF(*corners[a]), QPointF(*corners[b]))
+            mid = (corners[a] + corners[b]) / 2
+            painter.drawText(QPointF(mid[0] - 3 * s, mid[1] + 4 * s), "?")
         painter.setPen(pen)
         c = self.box.corners()
         font = QFont()
@@ -337,6 +349,11 @@ class CropItem(QGraphicsObject):
             snapped_sides.add(SIDE_NAMES[int(kind[1])])
         nb.meta["pinned_sides"] = _ordered(set(b0.meta.get("pinned_sides", ())) | moved)
         nb.meta["snapped_sides"] = _ordered(snapped_sides)
+        check = {k: v for k, v in b0.meta.get("check_sides", {}).items() if k not in moved}
+        if check:
+            nb.meta["check_sides"] = check
+        else:
+            nb.meta.pop("check_sides", None)
         self.box = nb
         self.update()
         self.changed.emit()

@@ -148,3 +148,35 @@ def test_the_window_passes_the_sessions_lines_to_the_preview(tmp_path, monkeypat
     QThreadPool.globalInstance().waitForDone(10000)
     app.processEvents()
     win.close()
+
+
+def test_a_flagged_side_shows_its_reason_and_loses_the_flag_when_moved():
+    app, v, it = _view()
+    it.box.meta["check_sides"] = {"right": "another edge 1.6 mm further in", "top": "the edge here is faint"}
+
+    it.hoverMoveEvent(Ev(200, 100))
+    assert it.toolTip() == "Check this side: another edge 1.6 mm further in"
+    it.hoverMoveEvent(Ev(150, 100))  # inside: no side
+    assert it.toolTip() == ""
+    _drag(it, "s1", (200, 100), (212, 100))
+    assert it.box.meta["check_sides"] == {"top": "the edge here is faint"}
+
+
+def test_the_status_counts_the_sides_to_check(tmp_path, monkeypatch):
+    from PySide6.QtWidgets import QApplication
+    from hasami.gui.app import MainWindow
+    from hasami.settings import AppSettings
+
+    app = QApplication.instance() or QApplication([])
+    st = AppSettings()
+    st.output.folder = str(tmp_path)
+    st.crop.mode = "booklet"
+    win = MainWindow(st)
+    box = CropBox(150, 100, 100, 60, meta={"auto_id": "a1", "check_sides": {"right": "x", "top": "y"}})
+    monkeypatch.setattr(win.session, "preview_boxes_px", lambda: [box])
+    win._show_boxes()
+    assert "2 sides to check" in win.status_label.text()
+    from PySide6.QtCore import QThreadPool
+    QThreadPool.globalInstance().waitForDone(10000)
+    app.processEvents()
+    win.close()

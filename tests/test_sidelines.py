@@ -175,7 +175,7 @@ def test_check_reason_names_the_first_condition_that_fires():
     assert check_reason(spine, (("no_crease", 0.5),)) == "no clear crease at the fold"
 
 
-def test_no_flag_rule_until_the_measurement_sets_one():
+def test_the_flag_rule_is_the_one_the_snap_check_fitted():
     from hasami.core import sidelines
 
-    assert sidelines.CHECK_RULE == ()
+    assert sidelines.CHECK_RULE == (("no_crease", 0.5), ("crowd", 8))  # the snap check's fitted rule
