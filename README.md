@@ -103,6 +103,11 @@ anywhere else.
 Editing crop boxes:
 
 - Drag inside a box to move it, and drag an edge or a corner to resize it.
+- Booklet mode: while you drag an edge, the edges auto-crop found nearby show as thin lines, and the
+  edge snaps to one when it comes within a few pixels. Hold Shift to drag freely. An edge you move
+  stays exactly where you put it in the saved scan; the box's other edges are still fitted on the
+  full-resolution scan.
+- An amber edge with a **?** is one auto-crop was unsure about: hover over it to see why, and check it.
 - Turn a box with the round handle above it, or type its angle under
   **Crop → Skew** (the arrow keys turn it by 0.1°).
 - Drag on empty space to add a box; press Delete to remove one.
