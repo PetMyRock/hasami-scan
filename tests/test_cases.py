@@ -202,3 +202,157 @@ def test_pack_zips_each_case_with_a_readme_and_splits_big_ones(tmp_path):
                                        "hasami-case-2026-10-15_143210-part2.zip"]
     with zipfile.ZipFile(split[0]) as zf:
         assert sorted(zf.namelist()) == ["2026-10-15_143210/scan.jpg", "README.txt"]
+
+
+def _session(tmp_path, enabled=True, **input_kw):
+    from hasami.settings import AppSettings
+    from hasami.workflow import Session
+
+    st = AppSettings()
+    st.input.device = "demo:booklet"
+    st.input.preview_dpi = 50
+    st.input.scan_dpi = input_kw.get("scan_dpi", 150)
+    st.crop.mode = "booklet"
+    st.output.folder = str(tmp_path / "scans")
+    st.cases.enabled = enabled
+    st.cases.folder = str(tmp_path / "cases")
+    return Session(st)
+
+
+def _bottom_out(b, mm=4.0):
+    return replace(b, h=b.h + mm, cy=b.cy + mm / 2, manual=True, meta=dict(b.meta))
+
+
+def test_auto_boxes_get_unique_ids(tmp_path):
+    s = _session(tmp_path)
+    s.run_preview()
+    ids = [b.meta["auto_id"] for b in s.boxes_mm]
+    assert ids and len(set(ids)) == len(ids)
+    assert [a.meta["auto_id"] for a in s.auto_mm] == ids
+    s.run_preview()
+    assert not set(ids) & {b.meta["auto_id"] for b in s.boxes_mm}  # never reused
+
+
+def test_a_corrected_scan_writes_one_case(tmp_path):
+    from hasami import cases
+
+    s = _session(tmp_path)
+    s.run_preview()
+    s.boxes_mm[0] = _bottom_out(s.boxes_mm[0])
+    notes = []
+    outcomes = s.run_scan(status=notes.append)
+    assert outcomes[0].paths  # the scan itself saved as usual
+    [path] = cases.list_cases(tmp_path / "cases")
+    doc = cases.read_case(path)
+    assert doc["reason"] == "corrected" and doc["scanner"]["id"] == "demo:booklet"
+    moved = [e for e in doc["edits"] if e["kind"] == "moved"]
+    assert len(moved) == 1 and moved[0]["sides_mm"]["bottom"] == pytest.approx(4.0, abs=0.01)
+    assert doc["preview"]["dpi"] == 50 and doc["scan"]["dpi"] == 150
+    assert s.last_case_path == path and s.case_note.startswith(f"Saved crop case {path.name} (bottom edge 4.0 mm out")
+    assert s.case_note in notes
+
+
+def test_an_uncorrected_scan_writes_nothing_until_saved(tmp_path):
+    from hasami import cases
+
+    s = _session(tmp_path)
+    s.run_preview()
+    s.run_scan()
+    assert cases.list_cases(tmp_path / "cases") == [] and s.case_note == ""
+    p = s.save_last_case()
+    assert cases.read_case(p)["reason"] == "saved"
+    assert s.save_last_case() == p  # once
+    assert cases.list_cases(tmp_path / "cases") == [p]
+
+
+def test_setting_off_keeps_and_writes_nothing(tmp_path):
+    s = _session(tmp_path, enabled=False)
+    s.run_preview()
+    s.boxes_mm[0] = _bottom_out(s.boxes_mm[0])
+    s.run_scan()
+    assert s.last_case is None and s.save_last_case() is None
+    assert not (tmp_path / "cases").exists()
+
+
+def test_a_case_that_cannot_be_written_does_not_break_the_scan(tmp_path):
+    s = _session(tmp_path)
+    (tmp_path / "blocked").write_text("a file, not a folder")
+    s.settings.cases.folder = str(tmp_path / "blocked" / "cases")
+    s.run_preview()
+    s.boxes_mm[0] = _bottom_out(s.boxes_mm[0])
+    notes = []
+    outcomes = s.run_scan(status=notes.append)
+    assert outcomes[0].paths and all(Path(p).exists() for p in outcomes[0].paths)
+    assert any(n.startswith("Could not save the crop case:") for n in notes)
+
+
+def test_the_scan_is_kept_at_400_dpi_at_most(tmp_path):
+    from hasami import cases
+
+    s = _session(tmp_path, scan_dpi=600)
+    s.run_preview()
+    s.boxes_mm[0] = _bottom_out(s.boxes_mm[0])
+    s.run_scan()
+    [path] = cases.list_cases(tmp_path / "cases")
+    doc = cases.read_case(path)
+    assert doc["scan"]["scan_dpi"] == 600 and doc["scan"]["dpi"] == 400
+    with Image.open(path / "scan.jpg") as im:
+        assert round(im.info["dpi"][0]) == 400
+        w_mm = im.size[0] / 400 * 25.4
+    assert w_mm == pytest.approx(doc["scan"]["area_mm"][2], abs=0.5)
+
+
+def test_a_feeder_batch_writes_one_case(tmp_path):
+    from hasami import cases
+
+    s = _session(tmp_path)
+    s.run_preview()
+    dev = s.open()
+    one = dev.scan
+    dev.scan_batch = lambda req, progress=None, cancel=None: iter([one(req), one(req)])
+    s.boxes_mm[0] = _bottom_out(s.boxes_mm[0])
+    assert len(s.run_scan()) == 2
+    assert len(cases.list_cases(tmp_path / "cases")) == 1
+
+
+def test_off_mode_never_writes_a_case_by_itself(tmp_path):
+    from hasami import cases
+
+    s = _session(tmp_path)
+    s.settings.crop.mode = "off"
+    s.run_preview()
+    drawn = CropBox.from_xywh(20, 20, 60, 80, manual=True)
+    drawn.meta["drawn"] = True
+    s.boxes_mm = [drawn]
+    s.run_scan()
+    assert cases.list_cases(tmp_path / "cases") == []
+    assert s.save_last_case() is not None  # still possible by hand
+
+
+def test_a_drawn_box_carried_to_the_next_page_is_not_a_new_correction(tmp_path):
+    from hasami import cases
+
+    s = _session(tmp_path)
+    s.run_preview()
+    drawn = CropBox.from_xywh(5, 5, 20, 20, manual=True)
+    drawn.meta["drawn"] = True
+    s.boxes_mm.append(drawn)
+    s.run_scan()
+    assert len(cases.list_cases(tmp_path / "cases")) == 1  # drawn on this page: a correction
+    s.run_preview()  # next page: the drawn box stays
+    assert any(b.meta.get("carried") for b in s.boxes_mm)
+    s.run_scan()
+    assert len(cases.list_cases(tmp_path / "cases")) == 1  # carried over: not a new one
+
+
+def test_redetect_keeps_the_edited_boxs_auto_original(tmp_path):
+    s = _session(tmp_path)
+    s.run_preview()
+    first = s.auto_mm[0]
+    s.boxes_mm[0] = _bottom_out(s.boxes_mm[0])
+    s.detect_on_preview()  # a Crop setting changed / Ctrl+R: edited boxes are kept
+    assert first.meta["auto_id"] in [a.meta["auto_id"] for a in s.auto_mm]
+    kept = next(a for a in s.auto_mm if a.meta["auto_id"] == first.meta["auto_id"])
+    assert (kept.cy, kept.h) == (first.cy, first.h)  # the auto original, not the edit
+    ids = [a.meta["auto_id"] for a in s.auto_mm]
+    assert len(set(ids)) == len(ids)
