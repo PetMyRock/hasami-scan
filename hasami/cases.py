@@ -114,7 +114,8 @@ A crop case keeps what an auto-crop correction shows, to tune auto-crop for your
 - scan.jpg: the uncropped scanned area (at most 400 dpi);
 - case.json: scanner, settings, the boxes auto-crop proposed and the boxes you scanned (bed mm).
 
-The scans are used to tune auto-crop and are kept private: they are never published.
+If you post this zip in the tuning channel on the Hasami Scan Discord, the members of that channel can see
+it. Cases are used only to tune auto-crop and are not published anywhere else.
 """
 
 

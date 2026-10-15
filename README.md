@@ -76,7 +76,8 @@ profile** chooses one by hand; the status bar shows which one is in use.
 **Want your scanner tuned?** Ask on the project's
 [Discord server](https://discord.gg/TAAV8B9WWg). You send a few scans (an empty bed, and items you actually
 scan), the crops are checked by hand and auto-crop is tuned against them.
-Scans are used only for testing and are never published.
+Scans you post there can be seen by the members of that channel; they are used only for testing and are not
+published anywhere else.
 
 **Test scan** (toolbar, Ctrl+T) makes such a scan in one click: the whole bed at
 400 dpi, whatever the crops and scan resolution are, saved uncropped as a TIFF in its
@@ -88,7 +89,9 @@ auto-crop gets something wrong, and send the file.
 Turn on **Crop > Save my corrections as crop cases**. Whenever you fix an auto-crop box before scanning, Hasami
 Scan keeps the preview, the scanned area (at most 400 dpi) and the boxes in a "crop case" (Documents/Hasami
 Scan/Crop cases). **Scan > Save this case** keeps one when the crop was right. Nothing is uploaded: use **File >
-Share crop cases...** to zip the cases you choose and post them on the Discord server.
+Share crop cases...** to zip the cases you choose and post them in the tuning channel on the Discord server.
+The members of that channel can see what you post; it is used only to tune auto-crop and is not published
+anywhere else.
 
 ## Use
 

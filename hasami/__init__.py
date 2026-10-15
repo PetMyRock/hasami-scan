@@ -1,3 +1,3 @@
 """Scanner: a VueScan-style scanning app with smarter auto-crop."""
 
-__version__ = "0.5.17"
+__version__ = "0.5.18"
