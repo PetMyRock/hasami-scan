@@ -567,6 +567,8 @@ class MainWindow(QMainWindow):
         self._save_timer.start()  # keep the saved settings current too
         self._cropped_timer.start()
         if section == "cases":
+            if not self.settings.cases.enabled:
+                self.session.last_case, self.session.last_case_path = None, None  # nothing kept while off
             self._update_case_actions()
             return
         if (section, name) == ("input", "show_all_devices"):

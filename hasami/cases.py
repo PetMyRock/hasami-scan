@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import sys
 import zipfile
@@ -78,8 +79,10 @@ def _count(n: int, what: str) -> str:
     return f"{n} {what}{'es' if n > 1 else ''}"
 
 
-def summary(edits: list[dict]) -> str:
-    """'bottom edge 4.2 mm out; 1 box deleted; 1 box drawn' (status bar, share dialog)."""
+def summary(edits: list[dict], turns: int = 0) -> str:
+    """'bottom edge 4.2 mm out; 1 box deleted; 1 box drawn' (status bar, share dialog).  ``turns``: the
+    clockwise quarter turns the preview is shown with (``crop.rotate``), so sides are named as the user sees
+    them; case.json keeps the scanner frame."""
     parts = []
     for e in edits:
         if e["kind"] != "moved":
@@ -87,7 +90,8 @@ def summary(edits: list[dict]) -> str:
         for side in SIDES:
             v = e["sides_mm"][side]
             if abs(v) > MOVED_MM:
-                parts.append(f"{side} edge {abs(v):.1f} mm {'out' if v > 0 else 'in'}")
+                shown = SIDES[(SIDES.index(side) + int(turns)) % 4]
+                parts.append(f"{shown} edge {abs(v):.1f} mm {'out' if v > 0 else 'in'}")
         if abs(e["angle_deg"]) > TURNED_DEG:
             parts.append(f"turned {e['angle_deg']:+.2f}°")
     for kind in ("deleted", "drawn"):
@@ -101,6 +105,8 @@ FORMAT = 1
 SCAN_DPI_MAX = 400.0
 JPEG_QUALITY = 95
 SHARE_DIR = "To share"
+CASE_NAME = re.compile(r"^\d{4}-\d\d-\d\d_\d{6}(_\d+)?$")  # write_case's folder names
+CASE_FILES = ("case.json", "preview.jpg", "scan.jpg")
 README = """Hasami Scan crop case (format 1)
 
 A crop case keeps what an auto-crop correction shows, to tune auto-crop for your scanner:
@@ -183,13 +189,20 @@ def write_case(folder: Path, data: CaseData) -> Path:
 
 
 def list_cases(folder: Path) -> list[Path]:
-    """Case folders, newest first (``.partial`` and the share folder left out)."""
+    """Case folders (named as ``write_case`` names them), newest first."""
     folder = Path(folder)
     if not folder.is_dir():
         return []
-    return sorted((p for p in folder.iterdir()
-                   if p.is_dir() and not p.name.endswith(".partial") and p.name != SHARE_DIR),
+    return sorted((p for p in folder.iterdir() if p.is_dir() and CASE_NAME.match(p.name)),
                   key=lambda p: p.name, reverse=True)
+
+
+def delete_case(path: Path) -> None:
+    """Remove a case: its own files, then the folder; anything else in it stays (OSError then)."""
+    path = Path(path)
+    for name in CASE_FILES:
+        (path / name).unlink(missing_ok=True)
+    path.rmdir()
 
 
 def read_case(path: Path) -> dict:

@@ -134,3 +134,40 @@ def test_crop_tab_has_the_case_settings(app):
     panel = SettingsPanel(st)
     assert ("cases", "enabled") in panel._widgets and ("cases", "folder") in panel._widgets
     assert not panel._widgets[("cases", "folder")].isEnabled()  # greyed out until the setting is on
+
+
+def test_turning_crop_cases_off_drops_the_kept_case(app, tmp_path):
+    from PySide6.QtCore import QThreadPool
+
+    from hasami.gui.app import MainWindow
+    from hasami.settings import AppSettings
+
+    st = AppSettings()
+    st.input.device = "demo:booklet"
+    st.input.preview_dpi = 50
+    st.input.scan_dpi = 150
+    st.crop.mode = "booklet"
+    st.output.folder = str(tmp_path / "scans")
+    st.cases.enabled = True
+    st.cases.folder = str(tmp_path / "cases")
+    win = MainWindow(st)
+
+    def wait():
+        end = time.monotonic() + 30
+        while win.task is not None and time.monotonic() < end:
+            app.processEvents()
+            time.sleep(0.01)
+
+    try:
+        win.do_preview()
+        wait()
+        win.do_scan()
+        wait()
+        assert win.session.last_case is not None and win.a_save_case.isEnabled()
+        st.cases.enabled = False
+        win.on_setting_changed("cases", "enabled")
+        assert win.session.last_case is None and not win.a_save_case.isEnabled()
+    finally:
+        QThreadPool.globalInstance().waitForDone(10000)
+        app.processEvents()
+        win.close()

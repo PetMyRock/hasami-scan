@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import shutil
 from pathlib import Path
 
 import numpy as np
@@ -57,7 +56,7 @@ class CasesDialog(QDialog):
             try:
                 doc = cases.read_case(path)
                 scanner = doc["scanner"].get("name") or doc["scanner"].get("id") or "?"
-                text = f"{path.name}  ·  {scanner}  ·  {doc['reason']}\n{cases.summary(doc['edits'])}"
+                text = f"{path.name}  ·  {scanner}  ·  {doc['reason']}\n{cases.summary(doc['edits'], doc.get('crop', {}).get('rotate', 0))}"
                 icon = QIcon(self._thumb(path, doc))
             except (ValueError, OSError, KeyError) as e:
                 text, icon = f"{path.name}  ·  unreadable ({e})", QIcon()
@@ -100,10 +99,19 @@ class CasesDialog(QDialog):
         sel = self.checked()
         if not sel or not self._confirm(len(sel)):
             return []
+        done, kept = [], []
         for p in sel:
-            shutil.rmtree(p, ignore_errors=True)
+            try:
+                cases.delete_case(p)
+                done.append(p)
+            except OSError:
+                kept.append(p.name)
         self.reload()
-        return sel
+        if kept:
+            QMessageBox.warning(self, "Delete crop cases",
+                                "Not deleted (other files are in the folder, or a file is in use):\n"
+                                + "\n".join(kept))
+        return done
 
     def _confirm(self, n: int) -> bool:
         return QMessageBox.question(self, "Delete crop cases",

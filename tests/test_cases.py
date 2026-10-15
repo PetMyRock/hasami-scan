@@ -356,3 +356,64 @@ def test_redetect_keeps_the_edited_boxs_auto_original(tmp_path):
     assert (kept.cy, kept.h) == (first.cy, first.h)  # the auto original, not the edit
     ids = [a.meta["auto_id"] for a in s.auto_mm]
     assert len(set(ids)) == len(ids)
+
+
+def test_opened_images_never_write_a_case(tmp_path):
+    # File > Open image goes through the file: backend; its id is the local path (not for Discord zips).
+    import cv2
+
+    from hasami import cases
+    from hasami.demo import SynthOptions, synth_scan
+
+    sc = synth_scan(SynthOptions(n_photos=2), seed=3)
+    png = tmp_path / "my image.png"
+    cv2.imwrite(str(png), cv2.cvtColor(sc.image, cv2.COLOR_RGB2BGR))
+    s = _session(tmp_path)
+    s.settings.input.device = f"file:{png}"
+    s.settings.crop.mode = "multi"
+    s.run_preview()
+    assert s.boxes_mm
+    s.boxes_mm[0] = _bottom_out(s.boxes_mm[0])
+    s.run_scan()
+    assert s.last_case is None and s.save_last_case() is None
+    assert cases.list_cases(tmp_path / "cases") == []
+
+
+def test_a_new_preview_drops_the_last_scans_case(tmp_path):
+    s = _session(tmp_path)
+    s.run_preview()
+    s.run_scan()
+    assert s.last_case is not None
+    s.run_preview()  # the next page: "Save this case" would no longer mean what is on screen
+    assert s.last_case is None and s.save_last_case() is None
+
+
+def test_only_case_folders_are_listed(tmp_path):
+    from hasami import cases
+
+    p = cases.write_case(tmp_path, _data())
+    (tmp_path / "My holiday photos").mkdir()
+    (tmp_path / "2026-10-15").mkdir()
+    assert cases.list_cases(tmp_path) == [p]
+
+
+def test_delete_case_removes_only_case_files(tmp_path):
+    from hasami import cases
+
+    p = cases.write_case(tmp_path, _data())
+    cases.delete_case(p)
+    assert not p.exists()
+    q = cases.write_case(tmp_path, _data())
+    (q / "my notes.txt").write_text("keep me")
+    with pytest.raises(OSError):
+        cases.delete_case(q)
+    assert (q / "my notes.txt").read_text() == "keep me"
+
+
+def test_summary_names_sides_as_shown_after_rotation():
+    from hasami import cases
+
+    a = _auto()
+    edits = cases.diff_boxes([a], [_edit(a, h=a.h + 4.2, cy=a.cy + 2.1)])
+    assert cases.summary(edits, turns=1) == "left edge 4.2 mm out"  # 90 deg right: the bottom shows on the left
+    assert cases.summary(edits, turns=2) == "top edge 4.2 mm out"
