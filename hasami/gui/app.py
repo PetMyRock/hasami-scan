@@ -509,6 +509,7 @@ class MainWindow(QMainWindow):
 
     def _show_boxes(self) -> None:
         boxes = self.session.preview_boxes_px()
+        self.preview.set_snap_lines(self.session.snap_lines_px())
         self.preview.set_boxes(boxes)
         self._cropped_timer.start()
         self._show_skew()
