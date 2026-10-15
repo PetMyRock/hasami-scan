@@ -43,7 +43,6 @@ PLACEHOLDER = (128, 128, 128)  # where a preview or scan is about to come in (Vu
 EDGE = 6.0  # how close (screen pixels) to a box's edge a click resizes instead of moving
 SNAP_PX = 8  # a dragged side jumps to a candidate line this close (screen px)
 SNAP_TILT_DEG = 1.5  # lines tilted more against the side are not offered
-_CORNER_SIDES = (("top", "left"), ("top", "right"), ("bottom", "right"), ("bottom", "left"))  # c0..c3
 
 
 def _ordered(names) -> list[str]:
@@ -255,22 +254,23 @@ class CropItem(QGraphicsObject):
             gc.setAlphaF(0.35 + 0.65 * min(1.0, max(0.0, (support - 0.6) / 0.4)))
             painter.setPen(QPen(gc, 0))  # cosmetic: 1 screen px
             painter.drawLine(p0, p1)
-        corners = self.box.corners()
-        for name in self.box.meta.get("check_sides", {}):
-            a, b = ((0, 1), (1, 2), (2, 3), (3, 0))[SIDE_NAMES.index(name)]
-            painter.setPen(QPen(CHECK, 3.0 * s))
-            painter.drawLine(QPointF(*corners[a]), QPointF(*corners[b]))
-            mid = (corners[a] + corners[b]) / 2
-            painter.drawText(QPointF(mid[0] - 3 * s, mid[1] + 4 * s), "?")
-        painter.setPen(pen)
         c = self.box.corners()
         font = QFont()
         font.setPointSizeF(max(1.0, 11 * s))
         font.setBold(True)
         painter.setFont(font)
+        turns = CropItem.view_turns % 4
+        for name in self.box.meta.get("check_sides", {}):
+            a, b = ((0, 1), (1, 2), (2, 3), (3, 0))[SIDE_NAMES.index(name)]
+            painter.setPen(QPen(CHECK, 3.0 * s))
+            painter.drawLine(QPointF(*c[a]), QPointF(*c[b]))
+            painter.save()  # the "?" upright on screen, like the box number
+            painter.translate(QPointF(*((c[a] + c[b]) / 2)))
+            painter.rotate(-90 * turns)
+            painter.drawText(QPointF(-4 * s, -6 * s), "?")
+            painter.restore()
         painter.setPen(QPen(colour))
         # The number goes in the corner that is top-left on screen, upright.
-        turns = CropItem.view_turns % 4
         corner = c[(4 - turns) % 4]
         painter.save()
         painter.translate(QPointF(*corner))
@@ -339,11 +339,12 @@ class CropItem(QGraphicsObject):
             w, h = max(4.0, abs(u)), max(4.0, abs(v))
             c = fixed + ux * (math.copysign(w, u) / 2) + uy * (math.copysign(h, v) / 2)
             nb = CropBox(c[0], c[1], w, h, b0.angle, b0.confidence)
+            corner_sides = {"right" if u > 0 else "left", "bottom" if v > 0 else "top"}  # (after a flip too)
         nb.manual = True
         nb.meta = dict(b0.meta)  # keep e.g. the crop's own rotation
         # The sides this edit moved stay where they are at scan time (refine fits only the others).
         moved = (set(SIDE_NAMES) if kind in ("move", "rot") else {SIDE_NAMES[int(kind[1])]} if kind[0] == "s"
-                 else set(_CORNER_SIDES[int(kind[1])]))
+                 else corner_sides)
         snapped_sides = set(b0.meta.get("snapped_sides", ())) - moved
         if kind[0] == "s" and snapped:
             snapped_sides.add(SIDE_NAMES[int(kind[1])])
