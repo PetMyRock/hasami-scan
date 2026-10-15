@@ -7,12 +7,20 @@ mm).  Spec: docs/specs/2026-10-15-crop-cases-design.md.
 
 from __future__ import annotations
 
+import json
 import os
+import shutil
 import sys
+import zipfile
+from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 
+import cv2
 import numpy as np
+from PIL import Image
 
+from . import __version__
 from .core.geometry import CropBox
 
 MOVED_MM = 0.1     # a side moved by more than this is a correction
@@ -87,3 +95,133 @@ def summary(edits: list[dict]) -> str:
         if n:
             parts.append(f"{_count(n, 'box')} {kind}")
     return "; ".join(parts) or "no corrections"
+
+
+FORMAT = 1
+SCAN_DPI_MAX = 400.0
+JPEG_QUALITY = 95
+SHARE_DIR = "To share"
+README = """Hasami Scan crop case (format 1)
+
+A crop case keeps what an auto-crop correction shows, to tune auto-crop for your scanner:
+- preview.jpg: the whole-bed preview, as scanned (scanner frame, not turned);
+- scan.jpg: the uncropped scanned area (at most 400 dpi);
+- case.json: scanner, settings, the boxes auto-crop proposed and the boxes you scanned (bed mm).
+
+The scans are used to tune auto-crop and are kept private: they are never published.
+"""
+
+
+@dataclass
+class CaseData:
+    preview: np.ndarray
+    preview_dpi: float
+    preview_area_mm: tuple
+    scan: np.ndarray
+    scan_dpi_saved: float
+    scan_dpi: float
+    scan_area_mm: tuple
+    auto: list
+    final: list
+    scanner_id: str = ""
+    scanner_name: str = ""
+    profile: str = ""
+    crop: dict = field(default_factory=dict)
+    reason: str = "corrected"
+    created: datetime = field(default_factory=datetime.now)
+
+
+def downscale(img: np.ndarray, dpi: float, max_dpi: float = SCAN_DPI_MAX) -> tuple[np.ndarray, float]:
+    """``img`` at most ``max_dpi`` (INTER_AREA), and its dpi."""
+    if dpi <= max_dpi:
+        return img, float(dpi)
+    f = max_dpi / dpi
+    return cv2.resize(img, None, fx=f, fy=f, interpolation=cv2.INTER_AREA), float(max_dpi)
+
+
+def _save_jpeg(path: Path, img: np.ndarray, dpi: float) -> None:
+    if img.dtype == np.uint16:
+        img = (img >> 8).astype(np.uint8)
+    Image.fromarray(np.ascontiguousarray(img)).save(path, "JPEG", quality=JPEG_QUALITY, dpi=(dpi, dpi))
+
+
+def _box(b: CropBox) -> list[float]:
+    return [round(float(v), 3) for v in (b.cx, b.cy, b.w, b.h, b.angle)]
+
+
+def write_case(folder: Path, data: CaseData) -> Path:
+    """Write a case into ``folder`` (created); returns its path.  Written as ``<name>.partial`` and renamed at
+    the end, so a half-written case is never listed."""
+    folder = Path(folder)
+    folder.mkdir(parents=True, exist_ok=True)
+    base = data.created.strftime("%Y-%m-%d_%H%M%S")
+    name, n = base, 2
+    while (folder / name).exists() or (folder / f"{name}.partial").exists():
+        name, n = f"{base}_{n}", n + 1
+    tmp = folder / f"{name}.partial"
+    tmp.mkdir()
+    try:
+        _save_jpeg(tmp / "preview.jpg", data.preview, data.preview_dpi)
+        _save_jpeg(tmp / "scan.jpg", data.scan, data.scan_dpi_saved)
+        doc = {"format": FORMAT, "app_version": __version__, "created": data.created.isoformat(timespec="seconds"),
+               "reason": data.reason, "scanner": {"id": data.scanner_id, "name": data.scanner_name},
+               "profile": data.profile, "crop": data.crop,
+               "preview": {"dpi": float(data.preview_dpi), "area_mm": [float(v) for v in data.preview_area_mm],
+                           "file": "preview.jpg"},
+               "scan": {"scan_dpi": float(data.scan_dpi), "dpi": float(data.scan_dpi_saved),
+                        "area_mm": [float(v) for v in data.scan_area_mm], "file": "scan.jpg"},
+               "auto": [{"id": b.meta.get("auto_id"), "box_mm": _box(b), "confidence": round(float(b.confidence), 3)}
+                        for b in data.auto],
+               "final": [{"id": b.meta.get("auto_id"), "box_mm": _box(b)} for b in data.final],
+               "edits": diff_boxes(data.auto, data.final)}
+        (tmp / "case.json").write_text(json.dumps(doc, indent=1), encoding="utf-8")
+        tmp.rename(folder / name)
+    except BaseException:
+        shutil.rmtree(tmp, ignore_errors=True)
+        raise
+    return folder / name
+
+
+def list_cases(folder: Path) -> list[Path]:
+    """Case folders, newest first (``.partial`` and the share folder left out)."""
+    folder = Path(folder)
+    if not folder.is_dir():
+        return []
+    return sorted((p for p in folder.iterdir()
+                   if p.is_dir() and not p.name.endswith(".partial") and p.name != SHARE_DIR),
+                  key=lambda p: p.name, reverse=True)
+
+
+def read_case(path: Path) -> dict:
+    """``case.json`` of a case; ValueError when it is missing, broken or from a newer format."""
+    try:
+        doc = json.loads((Path(path) / "case.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError) as e:
+        raise ValueError(f"unreadable case ({e})") from e
+    if not isinstance(doc, dict) or not isinstance(doc.get("format"), int) or "edits" not in doc:
+        raise ValueError("unreadable case (not a crop case)")
+    if doc["format"] > FORMAT:
+        raise ValueError("made by a newer Hasami Scan")
+    return doc
+
+
+def pack(cases: list[Path], out_dir: Path, limit_mb: float = 9.5) -> list[Path]:
+    """One zip per case (its files + README.txt) in ``out_dir``; a case over ``limit_mb`` is split into a
+    ``scan.jpg`` zip and the rest."""
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    zips = []
+    for case in map(Path, cases):
+        files = sorted(p for p in case.iterdir() if p.is_file())
+        size_mb = sum(p.stat().st_size for p in files) / 2 ** 20
+        groups = ([files] if size_mb <= limit_mb else
+                  [[p for p in files if p.name == "scan.jpg"], [p for p in files if p.name != "scan.jpg"]])
+        for k, group in enumerate(groups):
+            suffix = "" if len(groups) == 1 else f"-part{k + 1}"
+            z = out_dir / f"hasami-case-{case.name}{suffix}.zip"
+            with zipfile.ZipFile(z, "w", zipfile.ZIP_STORED) as zf:  # JPEGs do not shrink
+                zf.writestr("README.txt", README)
+                for p in group:
+                    zf.write(p, f"{case.name}/{p.name}")
+            zips.append(z)
+    return zips
