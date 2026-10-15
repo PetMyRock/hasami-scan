@@ -34,6 +34,17 @@ class SideLine:
     kind: str  # "layer" | "faint" | "strong" | "crease"
 
 
+@dataclass(frozen=True)
+class SnapLine:
+    """A candidate line in absolute coordinates (bed mm in the Session, preview px in the GUI), already
+    moved in by the crop margin: a side snapped to it lands where auto-crop would have put it."""
+
+    p: tuple[float, float]  # a point on the line
+    d: tuple[float, float]  # unit direction
+    support: float
+    kind: str
+
+
 def side_lines(image: np.ndarray, box: CropBox, dpi: float) -> dict[str, list[SideLine]]:
     """Every candidate line near each side of a final page box, keyed "top" / "right" / "bottom" /
     "left" (the box's own frame), each list sorted by offset.  Spine sides (``box.meta["keep_sides"]``)
