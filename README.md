@@ -103,9 +103,6 @@ anywhere else.
 Editing crop boxes:
 
 - Drag inside a box to move it, and drag an edge or a corner to resize it.
-- An edge you move stays exactly where you put it in the saved scan; the box's other edges are still
-  fitted on the full-resolution scan (in every auto-crop mode). Moving or turning the whole box keeps
-  all of it as you left it.
 - Booklet mode: while you drag an edge, the edges auto-crop found nearby show as thin lines, and the
   edge snaps to one when it comes within a few pixels. Hold Shift to drag freely.
 - An amber edge with a **?** is one auto-crop was unsure about: hover over it to see why, and check it.

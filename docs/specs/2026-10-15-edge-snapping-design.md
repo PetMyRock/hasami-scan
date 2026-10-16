@@ -1,6 +1,11 @@
 # Edge snapping, pinned sides and "check this side" flags (design)
 
 Status: design, approved in chat Oct 15 2026 (sections 1-3); waiting for the owner's review of this file.
+
+**Update (owner, Oct 15 2026): Section 2 (pinned sides) dropped after it was built.** A real-scan check (hasami-data
+`benchmarks/learned/snap/pincheck.py`) showed the pinned refine matches the unedited refine and, against freezing
+the edited box, improves no side and moves three inward 0.55-0.8 mm. Edited boxes stay frozen at scan time, as
+before; `pinned_sides` is not recorded. Snapping and flags ship as specified.
 Part (2) of the Oct 15 brainstorm; part (3), crop cases, shipped in 0.5.17 / 0.5.18
 (`docs/specs/2026-10-15-crop-cases-design.md`).
 

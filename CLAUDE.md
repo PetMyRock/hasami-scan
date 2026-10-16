@@ -338,24 +338,24 @@ Scan > "Save this case" (`save_last_case`), File > "Share crop cases..." (`gui/c
 in `To share`). Spec `docs/specs/2026-10-15-crop-cases-design.md`. Next: a hasami-data tool to turn cases into truth
 records.
 
-## Edge snapping, pinned sides and flags (0.5.19, owner)
+## Edge snapping and flags (0.5.19, owner)
 `hasami/core/sidelines.py` (read-only, never called by `detect` / `refine`): `side_lines` = toppage's line finding on a
 wider strip around each FINAL box (paper sides 14 mm in / 8 mm out at the three thresholds; spine sides the fold's
 valleys within 4 mm); `box_lines` maps a spread's pages onto its sides. `Session.detect_on_preview` keeps them per auto
 id in bed mm (`snap_lines`, booklet mode only, moved in by the crop margin); `CropItem` snaps a dragged side within
-8 screen px (lines tilted > 1.5 deg ignored; Shift = free). Every edit records `meta["pinned_sides"]` (side drag: that
-side; corner: two; move / rotate / Skew: all four) and `snapped_sides`; `autocrop._refine` refines an auto box with 1-3
-pinned sides and `geometry.pin_sides` puts them back (angle kept); drawn, unpinned-manual and fully pinned boxes stay
-untouched. A pinned booklet box's other sides can sit up to ~0.15 mm from an unedited refine's (top_page refits all
-sides from its start box). Flags: `sidelines.CHECK_RULE` = no crease line within 0.5 mm of a spine, or >= 8 lines
-within 3 mm; amber side + "?" + tooltip, "N sides to check" in the status bar, gone once the side is moved.
-Measurement (hasami-data `benchmarks/learned/snapcheck_2026-10-15.md`, bare 200 dpi preview box, 116 V600 booklet
-records, 624 sides, 18 > 0.5 mm off): candidates cover 11 / 12 wrong paper sides but 0 / 6 wrong folds (saddle-stitched
-and wrong-valley folds are not at a valley; 21 / 129 spines get no valley line at all); flags pass the preset gate on
-held-out books (11.2% flagged, 12 / 18 caught) but only 12 of 70 flags are on wrong sides (`crowd` fires on right stack
-sides). Thin data: revisit both rules with crop cases (`case.json` keeps `check_sides`, `pinned_sides`,
-`snapped_sides`). `side_lines` takes ~170 ms per page at 200 dpi (toppage's `_layer_lines`). Spec
-`docs/specs/2026-10-15-edge-snapping-design.md`.
+8 screen px (lines tilted > 1.5 deg ignored; Shift = free) and records `meta["snapped_sides"]`. Edited boxes are still
+frozen at scan time (manual = not refined). Pinning (refine the untouched sides of an edited box) was built and
+dropped (owner): on the real scans it matched the unedited refine and, against freezing, improved no side and moved
+three inward 0.55-0.8 mm (KLK6 0022's fold, V600 0019, V600 0043: the refine's known leftovers); the bare preview box's
+untouched sides are already ~0.05 mm off (median). Flags: `sidelines.CHECK_RULE` = no crease line within 0.5 mm of a
+spine, or >= 8 lines within 3 mm; amber side + upright "?" + tooltip, "N sides to check" in the status bar, gone once
+the side is moved (owner: ship them). Measurement (hasami-data `benchmarks/learned/snapcheck_2026-10-15.md`, bare
+200 dpi preview box, 116 V600 booklet records, 624 sides, 18 > 0.5 mm off): candidates cover 11 / 12 wrong paper sides
+but 0 / 6 wrong folds (saddle-stitched and wrong-valley folds are not at a valley; 21 / 129 spines get no valley line
+at all); flags pass the preset gate on held-out books (11.2% flagged, 12 / 18 caught) but only 12 of 70 flags are on
+wrong sides (`crowd` fires on right stack sides). Thin data: revisit the rule with crop cases (`case.json` keeps
+`check_sides` and `snapped_sides`). `side_lines` takes ~170 ms per page at 200 dpi (toppage's `_layer_lines`). Spec
+`docs/specs/2026-10-15-edge-snapping-design.md` (its Section 2, pinning, dropped).
 
 ## Next: learned cropping (planned, owner approved Oct 13 2026)
 0.5.12: candidate collector and patch/feature extraction (no crop changes); dataset + baseline in

@@ -342,13 +342,12 @@ class CropItem(QGraphicsObject):
             corner_sides = {"right" if u > 0 else "left", "bottom" if v > 0 else "top"}  # (after a flip too)
         nb.manual = True
         nb.meta = dict(b0.meta)  # keep e.g. the crop's own rotation
-        # The sides this edit moved stay where they are at scan time (refine fits only the others).
+        # The sides this edit moved are no longer on a snapped line, and no longer need checking.
         moved = (set(SIDE_NAMES) if kind in ("move", "rot") else {SIDE_NAMES[int(kind[1])]} if kind[0] == "s"
                  else corner_sides)
         snapped_sides = set(b0.meta.get("snapped_sides", ())) - moved
         if kind[0] == "s" and snapped:
             snapped_sides.add(SIDE_NAMES[int(kind[1])])
-        nb.meta["pinned_sides"] = _ordered(set(b0.meta.get("pinned_sides", ())) | moved)
         nb.meta["snapped_sides"] = _ordered(snapped_sides)
         check = {k: v for k, v in b0.meta.get("check_sides", {}).items() if k not in moved}
         if check:
@@ -621,8 +620,8 @@ class PreviewView(QGraphicsView):
         nb = CropBox(b0.cx, b0.cy, b0.w, b0.h, float(angle), b0.confidence)
         nb.manual = True
         nb.meta = dict(b0.meta)
-        nb.meta["pinned_sides"] = list(SIDE_NAMES)  # a turned box is frozen as a whole
-        nb.meta["snapped_sides"] = []
+        nb.meta["snapped_sides"] = []  # every side turned
+        nb.meta.pop("check_sides", None)
         it.prepareGeometryChange()
         it.box = nb
         it.update()

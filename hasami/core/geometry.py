@@ -203,34 +203,6 @@ class CropBox:
         return cls(x + w / 2.0 - 0.5, y + h / 2.0 - 0.5, w, h, 0.0, **kw)
 
 
-def side_frames(box: CropBox) -> dict[str, tuple[np.ndarray, np.ndarray]]:
-    """Each side's middle and outward unit normal, by name (the box's own frame)."""
-    c = box.corners()
-    ux, uy = box.axes
-    return {"top": ((c[0] + c[1]) / 2, -uy), "right": ((c[1] + c[2]) / 2, ux),
-            "bottom": ((c[2] + c[3]) / 2, uy), "left": ((c[3] + c[0]) / 2, -ux)}
-
-
-def pin_sides(given: CropBox, refined: CropBox, pinned: Iterable[str]) -> CropBox:
-    """``given`` with its angle kept, each pinned side where it is and each other side moved parallel to
-    where ``refined`` put it (the refined side's middle projected on ``given``'s normal).  Confidence from
-    ``refined``; ``manual`` and ``meta`` from ``given`` (a hand-edited box keeps its ids and pins)."""
-    pinned = set(pinned)
-    mine, theirs = side_frames(given), side_frames(refined)
-    move = {}
-    for name, (m, n) in mine.items():
-        if name in pinned:
-            move[name] = 0.0
-            continue
-        rm = max(theirs.values(), key=lambda t: float(t[1] @ n))[0]  # the refined side facing the same way
-        move[name] = float((rm - m) @ n)
-    ux, uy = given.axes
-    c = (np.array([given.cx, given.cy]) + ux * (move["right"] - move["left"]) / 2
-         + uy * (move["bottom"] - move["top"]) / 2)
-    return CropBox(c[0], c[1], given.w + move["left"] + move["right"], given.h + move["top"] + move["bottom"],
-                   given.angle, refined.confidence, manual=given.manual, meta=dict(given.meta))
-
-
 def _rect_from_points(pts: np.ndarray, angle_hint: float) -> dict:
     box = CropBox.from_points(pts)
     return {"cx": box.cx, "cy": box.cy, "w": box.w, "h": box.h, "angle": box.angle}

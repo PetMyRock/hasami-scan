@@ -48,7 +48,7 @@ def test_a_dragged_side_snaps_to_a_line_within_reach():
     app, v, it = _view()
     _drag(it, "s1", (200, 100), (225, 100))  # the right side, 5 px short of the line at x = 230
     assert it.box.bounding_rect()[2] == pytest.approx(230.0)
-    assert it.box.meta["pinned_sides"] == ["right"] and it.box.meta["snapped_sides"] == ["right"]
+    assert it.box.meta["snapped_sides"] == ["right"]
     assert it.box.manual and it.box.meta["auto_id"] == "a1"
 
 
@@ -56,7 +56,7 @@ def test_shift_drags_freely():
     app, v, it = _view()
     _drag(it, "s1", (200, 100), (225, 100), Qt.ShiftModifier)
     assert it.box.bounding_rect()[2] == pytest.approx(225.0)
-    assert it.box.meta["pinned_sides"] == ["right"] and it.box.meta["snapped_sides"] == []
+    assert it.box.meta["snapped_sides"] == []
 
 
 def test_a_line_out_of_reach_does_not_snap():
@@ -72,30 +72,34 @@ def test_a_line_tilted_against_the_side_is_ignored():
     assert it.box.bounding_rect()[2] == pytest.approx(228.0)
 
 
-def test_a_free_drag_after_a_snap_clears_snapped_but_stays_pinned():
+def test_a_free_drag_after_a_snap_clears_snapped():
     app, v, it = _view()
     _drag(it, "s1", (200, 100), (225, 100))
     _drag(it, "s1", (230, 100), (212, 100), Qt.ShiftModifier)
-    assert it.box.meta["pinned_sides"] == ["right"] and it.box.meta["snapped_sides"] == []
+    assert it.box.meta["snapped_sides"] == []
 
 
-def test_corners_moves_and_skew_pin_their_sides():
+def test_corners_moves_and_skew_clear_the_flags_of_the_sides_they_move():
     app, v, it = _view()
+    it.box.meta["check_sides"] = {"top": "a", "right": "b", "bottom": "c", "left": "d"}
     _drag(it, "c1", (200, 70), (205, 65))  # top-right corner
-    assert it.box.meta["pinned_sides"] == ["top", "right"]
+    assert it.box.meta["check_sides"] == {"bottom": "c", "left": "d"}
     app, v, it = _view()
+    it.box.meta["check_sides"] = {"top": "a", "right": "b", "bottom": "c", "left": "d"}
     _drag(it, "move", (150, 100), (152, 101))
-    assert it.box.meta["pinned_sides"] == ["top", "right", "bottom", "left"]
+    assert "check_sides" not in it.box.meta
     app, v, it = _view()
+    it.box.meta["check_sides"] = {"top": "a", "right": "b", "bottom": "c", "left": "d"}
     v.set_box_angle(0, 1.5)
-    assert v.items_[0].box.meta["pinned_sides"] == ["top", "right", "bottom", "left"]
+    assert "check_sides" not in v.items_[0].box.meta
 
 
-def test_pins_accumulate():
+def test_flags_go_side_by_side():
     app, v, it = _view()
+    it.box.meta["check_sides"] = {"top": "a", "right": "b", "bottom": "c", "left": "d"}
     _drag(it, "s1", (200, 100), (212, 100))
     _drag(it, "s0", (150, 70), (150, 60))
-    assert it.box.meta["pinned_sides"] == ["top", "right"]
+    assert it.box.meta["check_sides"] == {"bottom": "c", "left": "d"}
 
 
 def test_guide_lines_show_only_while_a_side_is_dragged():
@@ -182,12 +186,13 @@ def test_the_status_counts_the_sides_to_check(tmp_path, monkeypatch):
     win.close()
 
 
-def test_a_corner_dragged_past_the_opposite_corner_pins_the_sides_it_placed():
+def test_a_corner_dragged_past_the_opposite_corner_clears_the_flags_of_the_sides_it_placed():
     app, v, it = _view()
+    it.box.meta["check_sides"] = {"top": "a", "right": "b", "bottom": "c", "left": "d"}
     _drag(it, "c1", (200, 70), (60, 60))  # top-right corner past the left side: the box flips
     x0, y0, x1, y1 = it.box.bounding_rect()
     assert (x0, y0) == pytest.approx((60, 60)) and (x1, y1) == pytest.approx((100, 130))
-    assert it.box.meta["pinned_sides"] == ["top", "left"]  # the sides at (60, 60): where the corner went
+    assert it.box.meta["check_sides"] == {"right": "b", "bottom": "c"}  # top and left: where the corner went
 
 
 def test_the_flag_mark_is_drawn_upright_at_the_label_size():

@@ -156,7 +156,7 @@ def _box(b: CropBox) -> list[float]:
     return [round(float(v), 3) for v in (b.cx, b.cy, b.w, b.h, b.angle)]
 
 def _marks(b: CropBox, *keys: str) -> dict:
-    """The box's optional case keys (flags, pinned / snapped sides), omitted when empty."""
+    """The box's optional case keys (flags, snapped sides), omitted when empty."""
     return {k: b.meta[k] for k in keys if b.meta.get(k)}
 
 
@@ -183,7 +183,7 @@ def write_case(folder: Path, data: CaseData) -> Path:
                         "area_mm": [float(v) for v in data.scan_area_mm], "file": "scan.jpg"},
                "auto": [{"id": b.meta.get("auto_id"), "box_mm": _box(b), "confidence": round(float(b.confidence), 3),
                          **_marks(b, "check_sides")} for b in data.auto],
-               "final": [{"id": b.meta.get("auto_id"), "box_mm": _box(b), **_marks(b, "pinned_sides", "snapped_sides")}
+               "final": [{"id": b.meta.get("auto_id"), "box_mm": _box(b), **_marks(b, "snapped_sides")}
                          for b in data.final],
                "edits": diff_boxes(data.auto, data.final)}
         (tmp / "case.json").write_text(json.dumps(doc, indent=1), encoding="utf-8")

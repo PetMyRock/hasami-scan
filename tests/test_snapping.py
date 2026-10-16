@@ -4,7 +4,15 @@ from dataclasses import replace
 import numpy as np
 import pytest
 
-from hasami.core.geometry import SIDE_NAMES, side_frames
+from hasami.core.geometry import SIDE_NAMES
+
+
+def side_frames(box):
+    """Each side's middle and outward unit normal, by name."""
+    c = box.corners()
+    ux, uy = box.axes
+    return {"top": ((c[0] + c[1]) / 2, -uy), "right": ((c[1] + c[2]) / 2, ux),
+            "bottom": ((c[2] + c[3]) / 2, uy), "left": ((c[3] + c[0]) / 2, -ux)}
 
 
 def _session(tmp_path, mode="booklet"):
@@ -60,7 +68,7 @@ def test_redetect_keeps_the_lines_of_edited_boxes(tmp_path):
     s.run_preview()
     b = s.boxes_mm[0]
     aid = b.meta["auto_id"]
-    s.boxes_mm[0] = replace(b, manual=True, meta={**b.meta, "pinned_sides": ["top"]})
+    s.boxes_mm[0] = replace(b, h=b.h + 2.0, cy=b.cy - 1.0, manual=True, meta=dict(b.meta))  # top dragged out
     s.detect_on_preview()
     assert s.snap_lines[aid] and set(s.snap_lines) == {x.meta["auto_id"] for x in s.boxes_mm}
 
