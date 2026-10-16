@@ -104,6 +104,10 @@ def test_side_handle_moves_one_side(tmp_path):
         def pos(self):
             return self._p
 
+        def modifiers(self):
+            from PySide6.QtCore import Qt
+            return Qt.NoModifier
+
     it._drag = ("s1", QPointF(200, 100), it.box)  # right side
     it.mouseMoveEvent(Ev(230, 100))
     x0, y0, x1, y1 = it.box.bounding_rect()

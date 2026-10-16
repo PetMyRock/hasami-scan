@@ -424,3 +424,16 @@ def test_the_zip_readme_says_who_can_see_a_posted_case():
 
     assert "members of that channel can see" in cases.README
     assert "never published" not in cases.README
+
+
+def test_a_case_records_flags_and_snaps(tmp_path):
+    from hasami import cases
+
+    d = _data()
+    d.auto[0].meta["check_sides"] = {"bottom": "another edge 1.6 mm further in"}
+    d.final[0].meta.update(snapped_sides=["bottom"])
+    doc = cases.read_case(cases.write_case(tmp_path, d))
+    assert doc["auto"][0]["check_sides"] == {"bottom": "another edge 1.6 mm further in"}
+    assert doc["final"][0]["snapped_sides"] == ["bottom"]
+    plain = cases.read_case(cases.write_case(tmp_path, _data()))
+    assert "check_sides" not in plain["auto"][0] and "snapped_sides" not in plain["final"][0]
