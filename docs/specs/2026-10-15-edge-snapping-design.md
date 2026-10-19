@@ -6,6 +6,9 @@ Status: design, approved in chat Oct 15 2026 (sections 1-3); waiting for the own
 `benchmarks/learned/snap/pincheck.py`) showed the pinned refine matches the unedited refine and, against freezing
 the edited box, improves no side and moves three inward 0.55-0.8 mm. Edited boxes stay frozen at scan time, as
 before; `pinned_sides` is not recorded. Snapping and flags ship as specified.
+
+**Update (owner, Oct 19 2026): snapping removed in 0.5.20** (the owner did not like it in use). Only the flags
+remain; `side_lines` / `box_lines` now serve the flag rule alone, and `snapped_sides` is no longer recorded.
 Part (2) of the Oct 15 brainstorm; part (3), crop cases, shipped in 0.5.17 / 0.5.18
 (`docs/specs/2026-10-15-crop-cases-design.md`).
 
