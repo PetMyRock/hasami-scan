@@ -1,5 +1,4 @@
-"""Candidate edge lines around a final crop box: what a dragged box side snaps to, and what
-"check this side" flags are measured on.
+"""Candidate edge lines around a final crop box: what "check this side" flags are measured on.
 
 Read-only: computed on the preview after ``detect`` (``Session.detect_on_preview``, booklet mode),
 never inside the engine, so no crop changes.  Uses toppage's own line finding (same segments,
@@ -32,17 +31,6 @@ class SideLine:
     slope: float  # tilt against the side: x = offset + slope * y (y along the side)
     support: float  # share of the segments that show it, 0..1
     kind: str  # "layer" | "faint" | "strong" | "crease"
-
-
-@dataclass(frozen=True)
-class SnapLine:
-    """A candidate line in absolute coordinates (bed mm in the Session, preview px in the GUI), already
-    moved in by the crop margin: a side snapped to it lands where auto-crop would have put it."""
-
-    p: tuple[float, float]  # a point on the line
-    d: tuple[float, float]  # unit direction
-    support: float
-    kind: str
 
 
 def side_lines(image: np.ndarray, box: CropBox, dpi: float) -> dict[str, list[SideLine]]:

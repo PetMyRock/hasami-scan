@@ -75,9 +75,6 @@ class Session:
         #: The boxes auto-crop proposed (bed mm, with meta["auto_id"]): what a crop case compares against.
         self.auto_mm: list[CropBox] = []
         self._auto_seq = 0
-        #: Booklet mode: the candidate lines around each auto box (by auto id, then side name; bed mm),
-        #: what a dragged side snaps to.
-        self.snap_lines: dict[str, dict[str, list[sidelines.SnapLine]]] = {}
         #: The last scan's crop case (crop cases on), its folder once written, and its status line.
         self.last_case: cases.CaseData | None = None
         self.last_case_path: Path | None = None
@@ -141,7 +138,6 @@ class Session:
         self.last_case, self.last_case_path = None, None  # "Save this case" means the page on screen
         for b in self.boxes_mm:
             b.meta["carried"] = True  # from an earlier page: not a correction of this one
-        self.snap_lines = {}  # a new page: none of the old lines apply
         self.detect_on_preview()
         return self.preview
 
@@ -160,17 +156,14 @@ class Session:
             self._auto_seq += 1
             b.meta["auto_id"] = f"a{self._auto_seq}"
         kept = {b.meta.get("auto_id") for b in manual} - {None}
-        self.snap_lines = {k: v for k, v in self.snap_lines.items() if k in kept}
-        if self.settings.crop.mode == "booklet" and found:
+        if self.settings.crop.mode == "booklet" and found and sidelines.CHECK_RULE:
             try:
                 with profiles.use(self.profile()):
                     for b_px, b_mm in zip(found, found_mm):
-                        lines = sidelines.box_lines(p.image, b_px, p.dpi)
-                        self.snap_lines[b_mm.meta["auto_id"]] = self._snap_lines(b_px, lines)
-                        check = self._check_sides(b_px, lines)
+                        check = self._check_sides(b_px, sidelines.box_lines(p.image, b_px, p.dpi))
                         if check:
                             b_mm.meta["check_sides"] = check  # (before auto_mm copies the boxes: cases see it)
-            except Exception:  # snapping is a help: never let it break the preview
+            except Exception:  # flags are a help: never let them break the preview
                 pass
         self.auto_mm = ([a for a in self.auto_mm if a.meta.get("auto_id") in kept]
                         + [replace(b, meta=dict(b.meta)) for b in found_mm])
@@ -187,30 +180,6 @@ class Session:
             if reason:
                 out[name] = reason
         return out
-
-    def _snap_lines(self, box_px: CropBox, lines: dict) -> dict[str, list[sidelines.SnapLine]]:
-        """A box's candidate lines (preview px, relative to its sides) as absolute bed-mm lines, moved in
-        by the crop margin."""
-        p = self.preview
-        px_mm, f = p.dpi / MM_PER_INCH, MM_PER_INCH / p.dpi
-        out = {}
-        for name, ls in lines.items():
-            out[name] = []
-            for ln in ls:
-                q, dd = sidelines.to_image(ln, box_px, name, px_mm, inset_mm=self.settings.crop.margin_mm)
-                out[name].append(sidelines.SnapLine(((q[0] + 0.5) * f + p.area_mm[0], (q[1] + 0.5) * f + p.area_mm[1]),
-                                                    (float(dd[0]), float(dd[1])), ln.support, ln.kind))
-        return out
-
-    def snap_lines_px(self) -> dict[str, dict[str, list[sidelines.SnapLine]]]:
-        """``snap_lines`` in preview pixels (as ``preview_boxes_px``)."""
-        if self.preview is None:
-            return {}
-        p = self.preview
-        f = p.dpi / MM_PER_INCH
-        return {aid: {name: [replace(ln, p=((ln.p[0] - p.area_mm[0]) * f - 0.5, (ln.p[1] - p.area_mm[1]) * f - 0.5))
-                             for ln in ls] for name, ls in sides.items()}
-                for aid, sides in self.snap_lines.items()}
 
     def preview_boxes_px(self) -> list[CropBox]:
         if self.preview is None:

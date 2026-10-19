@@ -31,7 +31,6 @@ from PySide6.QtWidgets import (
 )
 
 from ..core.geometry import SIDE_NAMES, CropBox
-from ..core.sidelines import normal_hit
 
 ACCENT = QColor(255, 72, 120)
 ACCENT_FILL = QColor(255, 72, 120, 40)
@@ -41,13 +40,6 @@ HANDLE = 9.0  # handle size in screen pixels
 BLANK = (38, 38, 44)  # an empty preview: the view's own background
 PLACEHOLDER = (128, 128, 128)  # where a preview or scan is about to come in (VueScan: grey)
 EDGE = 6.0  # how close (screen pixels) to a box's edge a click resizes instead of moving
-SNAP_PX = 8  # a dragged side jumps to a candidate line this close (screen px)
-SNAP_TILT_DEG = 1.5  # lines tilted more against the side are not offered
-
-
-def _ordered(names) -> list[str]:
-    names = set(names)
-    return [n for n in SIDE_NAMES if n in names]
 
 
 def to_qimage(img: np.ndarray) -> QImage:
@@ -115,9 +107,6 @@ class CropItem(QGraphicsObject):
         self.setAcceptHoverEvents(True)
         self.setZValue(10)
         self._drag = None
-        #: Candidate lines per side name (preview px, ``SnapLine``) a dragged side snaps to.
-        self.snap: dict = {}
-        self._free = False  # Shift held during this drag
 
     # --------------------------------------------------------------- geometry
     def _scale(self) -> float:
@@ -145,10 +134,7 @@ class CropItem(QGraphicsObject):
     def boundingRect(self) -> QRectF:
         x0, y0, x1, y1 = self.box.bounding_rect()
         pad = 40 * self._scale()
-        r = QRectF(x0 - pad, y0 - pad, x1 - x0 + 2 * pad, y1 - y0 + 2 * pad)
-        for p0, p1, _ in self.guide_lines():
-            r = r.united(QRectF(p0, p1).normalized().adjusted(-2, -2, 2, 2))
-        return r
+        return QRectF(x0 - pad, y0 - pad, x1 - x0 + 2 * pad, y1 - y0 + 2 * pad)
 
     def shape(self) -> QPainterPath:
         path = QPainterPath()
@@ -191,33 +177,6 @@ class CropItem(QGraphicsObject):
         ux, uy = b.axes
         return ((uy, -1), (ux, 1), (uy, 1), (ux, -1))[i]
 
-    def _snap_hits(self, i: int, b: CropBox) -> list:
-        """(distance from ``b``'s centre along side ``i``'s outward normal, line) of each usable line."""
-        axis, sign = self._side_axis(i, b)
-        nrm, c = axis * sign, np.array([b.cx, b.cy])
-        out = []
-        for ln in self.snap.get(SIDE_NAMES[i], ()):
-            dd = np.array(ln.d)
-            if abs(float(dd @ nrm)) > math.sin(math.radians(SNAP_TILT_DEG)):
-                continue
-            t = normal_hit(np.array(ln.p), dd, c, nrm)
-            if t is not None:
-                out.append((t, ln))
-        return out
-
-    def guide_lines(self) -> list[tuple[QPointF, QPointF, float]]:
-        """The dragged side's lines (while a side is dragged without Shift): segments as long as the side."""
-        if self._drag is None or self._free or self._drag[0][0] != "s":
-            return []
-        i, b = int(self._drag[0][1]), self.box
-        axis, sign = self._side_axis(i, b)
-        half = (b.w if i % 2 == 0 else b.h) / 2  # top / bottom (s0, s2) run along the width
-        out = []
-        for t, ln in self._snap_hits(i, b):
-            q, dd = np.array([b.cx, b.cy]) + axis * sign * t, np.array(ln.d)
-            out.append((QPointF(*(q - dd * half)), QPointF(*(q + dd * half)), float(ln.support)))
-        return out
-
     def hoverMoveEvent(self, event) -> None:
         kind = self._hit(event.pos())
         reason = self.box.meta.get("check_sides", {}).get(SIDE_NAMES[int(kind[1])]) if kind[0] == "s" else None
@@ -249,11 +208,6 @@ class CropItem(QGraphicsObject):
         painter.setPen(pen)
         painter.setBrush(QBrush(ACCENT_FILL if self.isSelected() else Qt.NoBrush))
         painter.drawPolygon(self._poly())
-        for p0, p1, support in self.guide_lines():
-            gc = QColor(ACCENT)
-            gc.setAlphaF(0.35 + 0.65 * min(1.0, max(0.0, (support - 0.6) / 0.4)))
-            painter.setPen(QPen(gc, 0))  # cosmetic: 1 screen px
-            painter.drawLine(p0, p1)
         c = self.box.corners()
         font = QFont()
         font.setPointSizeF(max(1.0, 11 * s))
@@ -292,7 +246,6 @@ class CropItem(QGraphicsObject):
         pos = event.pos()
         # Edges and corners resize even when the box is not selected yet.
         self._drag = (self._hit(pos), pos, self.box)
-        self._free = False
         super().mousePressEvent(event)
         self.setSelected(True)
 
@@ -316,12 +269,6 @@ class CropItem(QGraphicsObject):
             i = int(kind[1])
             axis, sign = self._side_axis(i, b0)
             d = float((np.array([pos.x(), pos.y()]) - np.array([b0.cx, b0.cy])) @ axis) * sign
-            self._free = bool(event.modifiers() & Qt.ShiftModifier)
-            reach = SNAP_PX * self._scale()
-            best = None if self._free else min(self._snap_hits(i, b0), key=lambda h: abs(h[0] - d), default=None)
-            snapped = best is not None and abs(best[0] - d) <= reach
-            if snapped:
-                d = best[0]
             half = (b0.h if i % 2 == 0 else b0.w) / 2
             size = max(4.0, d + half)  # from the fixed side to the dragged one
             shift = (size - 2 * half) / 2 * sign
@@ -342,13 +289,9 @@ class CropItem(QGraphicsObject):
             corner_sides = {"right" if u > 0 else "left", "bottom" if v > 0 else "top"}  # (after a flip too)
         nb.manual = True
         nb.meta = dict(b0.meta)  # keep e.g. the crop's own rotation
-        # The sides this edit moved are no longer on a snapped line, and no longer need checking.
+        # The sides this edit moved no longer need checking.
         moved = (set(SIDE_NAMES) if kind in ("move", "rot") else {SIDE_NAMES[int(kind[1])]} if kind[0] == "s"
                  else corner_sides)
-        snapped_sides = set(b0.meta.get("snapped_sides", ())) - moved
-        if kind[0] == "s" and snapped:
-            snapped_sides.add(SIDE_NAMES[int(kind[1])])
-        nb.meta["snapped_sides"] = _ordered(snapped_sides)
         check = {k: v for k, v in b0.meta.get("check_sides", {}).items() if k not in moved}
         if check:
             nb.meta["check_sides"] = check
@@ -359,10 +302,7 @@ class CropItem(QGraphicsObject):
         self.changed.emit()
 
     def mouseReleaseEvent(self, event) -> None:
-        self.prepareGeometryChange()  # the guide lines go
         self._drag = None
-        self._free = False
-        self.update()
         super().mouseReleaseEvent(event)
 
 
@@ -397,7 +337,6 @@ class PreviewView(QGraphicsView):
         self._live_box: CropBox | None = None
         self._front = None  # clips the strips to the rows of the box received so far
         self._hint = ""  # shown instead of START_HINT (e.g. no scanner found)
-        self.snap_lines: dict = {}  # candidate lines per auto id and side (preview px)
         self._placeholder()
 
     def set_hint(self, text: str) -> None:
@@ -585,15 +524,8 @@ class PreviewView(QGraphicsView):
         for i, b in enumerate(boxes):
             self._add_item(b)
 
-    def set_snap_lines(self, lines: dict) -> None:
-        """Candidate lines per auto id and side (preview px), for snapping dragged sides."""
-        self.snap_lines = lines or {}
-        for it in self.items_:
-            it.snap = self.snap_lines.get(it.box.meta.get("auto_id"), {})
-
     def _add_item(self, box: CropBox) -> CropItem:
         it = CropItem(box, len(self.items_))
-        it.snap = self.snap_lines.get(box.meta.get("auto_id"), {})
         it.changed.connect(self.boxes_changed.emit)
         self.scene().addItem(it)
         self.items_.append(it)
@@ -620,8 +552,7 @@ class PreviewView(QGraphicsView):
         nb = CropBox(b0.cx, b0.cy, b0.w, b0.h, float(angle), b0.confidence)
         nb.manual = True
         nb.meta = dict(b0.meta)
-        nb.meta["snapped_sides"] = []  # every side turned
-        nb.meta.pop("check_sides", None)
+        nb.meta.pop("check_sides", None)  # every side turned
         it.prepareGeometryChange()
         it.box = nb
         it.update()
