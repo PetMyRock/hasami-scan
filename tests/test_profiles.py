@@ -14,7 +14,7 @@ def test_v600_profile_differs_from_the_default_only_in_its_own_switches():
     own = {"min_edge_step", "crease_step", "fine_stack", "stack_by_segment", "stack_jump", "depth_mm",
            "layer_depth_mm", "fine_strong_lines", "shrink_lid_hue", "walk_after_passes",
            "cover_rim", "paper_colour_edges", "lid_all_round_split_score", "stack_shadow_l",
-           "dark_edge_l", "rim_print_inside", "crease_retry_mm"}
+           "dark_edge_l", "rim_print_inside", "crease_retry_mm", "thick_sheet_band"}
     v600, default = profiles.get("epson-v600"), profiles.DEFAULT
     for f in dataclasses.fields(profiles.Profile):
         if f.name not in ident | own:
