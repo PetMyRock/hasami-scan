@@ -67,6 +67,80 @@ def _line_fit(pts, vertical: bool, tol: float):
     return float(a), float(b), float(keep.mean()), float(np.sqrt(np.mean(r ** 2)))
 
 
+def _top_sheet_edge(L: np.ndarray, pts, line, side: str, span, level: float, mm: float, tuned):
+    """An outer edge line moved to the top page's edge when a lower sheet shows as a plain band beyond it
+    (``Profile.thick_sheet_band``).  A ragged line whose points lie on two lines (the band about as wide as the
+    2 mm paper run: some points on the band's outer end, some on the top page's step line) is refitted to the
+    points on the page's side; then a clean line in front of the stack moves in to the step line inside a band."""
+    inward = 1.0 if side == "L" else -1.0
+    a, b, inl, rms = line
+    if inl < tuned.thick_inliers or rms > tuned.thick_rms_mm * mm:
+        P = np.asarray(pts, float)
+        r = P[:, 0] - (a * P[:, 1] + b)
+        inner = P[inward * r > 0]
+        if len(inner) < max(8, 0.3 * len(P)):
+            return line
+        fit = _line_fit(inner, True, tol=0.4 * mm)
+        if fit is None or fit[2] < tuned.thick_inliers or fit[3] > tuned.thick_rms_mm * mm:
+            return line
+        a, b, inl, rms = fit
+    t = _band_step(L, a, b, inward, span, level, mm)
+    return (a, b + inward * t * mm, inl, rms) if t else (a, b, inl, rms)
+
+
+def _band_step(L: np.ndarray, a: float, b: float, inward: float, span, level: float, mm: float) -> float:
+    """How far (mm) inside the edge x = a*y + b the top page ends: the innermost of the step lines (<= 0.6 mm
+    apart) behind a plain band >= 0.6 mm wide, within 5 mm, with page stack just outside the edge and plain
+    paper for 2 mm inside the line; 0 when there is no such band."""
+    yt, yb = span
+    ys = np.arange(yt + 0.12 * (yb - yt), yb - 0.12 * (yb - yt))
+    step = 0.25  # px
+    ts = np.arange(-2.0 * mm, 6.0 * mm, step)
+    X = ((a * ys + b)[:, None] + inward * ts[None, :]).astype(np.float32)
+    Y = np.repeat(ys[:, None], len(ts), 1).astype(np.float32)
+    S = cv2.remap(np.ascontiguousarray(L, dtype=np.float32), X, Y, cv2.INTER_LINEAR)
+    tmm = ts / mm
+    segs = [r for r in np.array_split(np.arange(len(ys)), 16) if len(r) >= 2]
+    valleys, profs = [], []
+    for rows in segs:
+        pr = np.median(S[rows], axis=0).astype(np.float32)
+        hp = pr - cv2.GaussianBlur(pr[None], (0, 0), 0.6 * mm / step)[0]
+        valleys.append([tmm[i] for i in range(2, len(hp) - 2) if hp[i] <= -1.5 and hp[i] == hp[i - 2:i + 3].min()])
+        profs.append(pr)
+
+    def support(t: float, tol: float = 0.3) -> float:
+        return float(np.mean([any(abs(v - t) <= tol for v in vs) for vs in valleys]))
+
+    def lines_in(lo: float, hi: float, need: float) -> list[float]:
+        cands = sorted({round(v, 2) for vs in valleys for v in vs if lo <= v <= hi})
+        out = []
+        for c in cands:
+            if support(c) >= need and all(abs(c - o) > 0.3 for o in out):
+                out.append(c)
+        return out
+
+    if len(lines_in(-2.0, -0.2, 0.6)) < 2:
+        return 0.0  # no page stack just outside: the edge lies on the lid
+    steps = lines_in(0.6, 5.0, 0.85)
+    if not steps:
+        return 0.0
+    t = steps[0]
+    if lines_in(0.3, t - 0.3, 0.5):
+        return 0.0  # the band is not plain
+    band = np.median(np.array(profs)[:, (tmm >= 0.3) & (tmm <= t - 0.3)])
+    if band < level - 3.0:
+        return 0.0  # not paper
+    while True:  # a double / triple step (sheets <= 0.6 mm apart): the innermost line
+        nxt = [c for c in lines_in(t + 0.15, t + 0.6, 0.6) if c > t]
+        if not nxt:
+            break
+        t = nxt[0]
+    inside = (tmm >= t + 0.3) & (tmm <= t + 2.3)
+    if lines_in(t + 0.3, t + 2.3, 0.5) or np.median(np.array(profs)[:, inside]) < level:
+        return 0.0  # print or more stack inside: not the top page's plain margin
+    return float(t)
+
+
 def _first_paper(prof: np.ndarray, level: float, run: int) -> float | None:
     """Coming from index 0, where the profile first stays above ``level`` for ``run`` samples;
     sub-pixel position of the crossing of ``level - 2`` just before it."""
@@ -227,6 +301,8 @@ def fit_spread(image: np.ndarray, dpi: float, debug: dict | None = None) -> list
             if r is not None:
                 pts.append((r if side == "L" else (w - 1) - r, y))
         lines["outer"] = _line_fit(pts, True, tol=0.4 * mm)
+        if tuned.thick_sheet_band and lines["outer"] is not None:
+            lines["outer"] = _top_sheet_edge(L, pts, lines["outer"], side, (yt, yb), level, mm, tuned)
         if lines["outer"] is None:
             return fail(f"page {side}: no straight outer edge")
         for k, ln in lines.items():
