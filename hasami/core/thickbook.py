@@ -75,15 +75,25 @@ def _top_sheet_edge(L: np.ndarray, pts, line, side: str, span, level: float, mm:
     inward = 1.0 if side == "L" else -1.0
     a, b, inl, rms = line
     if inl < tuned.thick_inliers or rms > tuned.thick_rms_mm * mm:
+        # Only two clean parallel lines 0.6-5 mm apart with the band between them (as 0036): an edge whose points
+        # scatter (V600 0019) stays ragged, and the general booklet logic takes the page as before.
         P = np.asarray(pts, float)
         r = P[:, 0] - (a * P[:, 1] + b)
-        inner = P[inward * r > 0]
-        if len(inner) < max(8, 0.3 * len(P)):
+        parts = [P[inward * r > 0], P[inward * r <= 0]]  # inner (the page's side), outer
+        if min(len(q) for q in parts) < max(8, 0.3 * len(P)):
             return line
-        fit = _line_fit(inner, True, tol=0.4 * mm)
-        if fit is None or fit[2] < tuned.thick_inliers or fit[3] > tuned.thick_rms_mm * mm:
+        fits = [_line_fit(q, True, tol=0.4 * mm) for q in parts]
+        if any(f is None or f[2] < tuned.thick_inliers or f[3] > tuned.thick_rms_mm * mm for f in fits):
             return line
-        a, b, inl, rms = fit
+        (ai, bi, inl, rms), (ao, bo, _, _) = fits
+        ym = (span[0] + span[1]) / 2
+        gap = inward * ((ai * ym + bi) - (ao * ym + bo)) / mm
+        if not 0.6 <= gap <= 5.0:
+            return line
+        t = _band_step(L, ao, bo, inward, span, level, mm)
+        if abs(t - gap) > 0.4:
+            return line  # no plain band between the lines
+        return ai, bi, inl, rms
     t = _band_step(L, a, b, inward, span, level, mm)
     return (a, b + inward * t * mm, inl, rms) if t else (a, b, inl, rms)
 

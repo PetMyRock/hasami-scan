@@ -16,7 +16,7 @@ def _spread(band_mm=0.0, alternate=False, seed=0):
     """A thick spread on a grey lid, fold across the middle (landscape), pages 20-138 / 142-260 mm wide and
     25-175 mm tall, an 8 mm striped page stack beyond each outer edge.  ``band_mm``: the right top page ends
     that far inside its stack's start (a dark step line), the lower sheet showing as plain paper between
-    (``alternate``: the band is 1.5 / 2.5 mm wide every 10 mm along the edge, as 0036's ~1.9 mm band).
+    (``alternate``: the top page ends at 258 mm and the band's outer end wavers about 2 mm out, as 0036).
     Returns the image and the right top page's outer edge (x, px)."""
     rng = np.random.default_rng(seed)
     W, H = int(280 * MM), int(200 * MM)
@@ -33,11 +33,16 @@ def _spread(band_mm=0.0, alternate=False, seed=0):
     edge = 260 * MM
     if band_mm or alternate:
         for y in range(y0, y1):
-            w = (1.5 if ((y - y0) // int(10 * MM)) % 2 else 2.5) if alternate else band_mm
-            e = int(round((260 - w) * MM))
+            e = int(round((258.0 if alternate else 260 - band_mm) * MM))
+            # 0036: the band's outer end wavers about the fit's 2 mm paper run (1.7 / 2.4 mm every 10 mm)
+            s = (259.7 if ((y - y0) // int(10 * MM)) % 2 else 260.4) if alternate else 260.0
+            img[y, int(round(s * MM)):int(268 * MM)] = STACK
+            for x in np.arange(260.0, 268, 0.4):
+                if x >= s:
+                    img[y, int(x * MM)] = LINE
             img[y, e] = LINE  # the top page's edge
-            img[y, e + 1:int(260 * MM)] = PAGE  # the lower sheet, plain
-        edge = (260 - (2.0 if alternate else band_mm)) * MM
+            img[y, e + 1:int(round(s * MM))] = PAGE  # the lower sheet, plain
+        edge = (258.0 if alternate else 260 - band_mm) * MM
     img += rng.normal(0, 1.5, img.shape)
     return np.clip(img, 0, 255).astype(np.uint8), edge
 
@@ -60,8 +65,7 @@ def test_a_band_on_the_edge_of_2_mm_still_gives_both_pages():
     with profiles.use("epson-v600"):
         pages = fit_spread(img, DPI, dbg)
     assert pages is not None, dbg.get("fail")
-    # the top page's edge: the step line, 1.5 mm (where the band is narrow) to 2.5 mm inside the stack
-    assert 257.2 * MM <= _right_outer(pages) <= 258.8 * MM, _right_outer(pages) / MM
+    assert abs(_right_outer(pages) - 258.0 * MM) <= 0.3 * MM, _right_outer(pages) / MM  # the step line
 
 
 def test_without_a_band_the_page_ends_at_the_stack_as_before():
@@ -92,3 +96,20 @@ def test_a_triple_step_ends_the_page_at_its_innermost_line():
         pages = fit_spread(img, DPI)
     assert pages is not None
     assert abs(_right_outer(pages) - edge) <= 0.3 * MM, (_right_outer(pages) / MM, edge / MM)
+
+
+def test_a_ragged_edge_that_is_not_two_lines_still_fails_the_fit():
+    """V600 0019: the outer edge's points scatter over ~4 mm (not a band): the fit must still give up, as before,
+    and leave the page to the general booklet logic."""
+    img, _ = _spread()
+    rng = np.random.default_rng(1)
+    y0, y1 = int(25 * MM), int(175 * MM)
+    for ya in range(y0, y1, int(2 * MM)):  # the paper ends anywhere between 257 and 260 mm, every 2 mm
+        e = int(round(rng.uniform(257, 260) * MM))
+        img[ya:min(ya + int(2 * MM), y1), e:int(260 * MM)] = STACK
+    with profiles.use("default"):
+        assert fit_spread(img, DPI) is None
+    dbg = {}
+    with profiles.use("epson-v600"):
+        assert fit_spread(img, DPI, dbg) is None, "the V600 fit answered on a ragged edge"
+    assert "ragged" in dbg["fail"]
