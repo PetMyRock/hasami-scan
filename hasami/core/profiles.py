@@ -173,6 +173,13 @@ class Profile:
     thick_height_tol: float = 0.03  # the two pages' heights within this share
     thick_width_tol: float = 0.15  # and widths
     thick_border_mm: float = 2.0  # pages at least this far from the image border
+    #: A lower sheet showing as a plain band beyond the top page's outer edge (KLK Vol.7 Key Art Collection lying
+    #: close to the bed's edges, the owner's test scans 0036-0038: the sheets below fan out by 1.8-3.5 mm).  The fit
+    #: takes the first 2 mm of plain paper coming from outside as the page, so a band wider than 2 mm became the
+    #: page's edge (+2.6 / +3.3 mm) and one about 2 mm wide mixed both lines until the fit gave up (0036: one box
+    #: over the whole bed).  With this the outer edge is the top page's step line inside such a band
+    #: (``thickbook._top_sheet_edge``).
+    thick_sheet_band: bool = False
 
 
 DEFAULT = Profile()
@@ -188,6 +195,7 @@ PROFILES: dict[str, Profile] = {
         fine_strong_lines=True, shrink_lid_hue=12.0, walk_after_passes=True,
         paper_colour_edges=15.0, cover_rim=True, lid_all_round_split_score=5.0,
         stack_shadow_l=20.0, dark_edge_l=15.0, rim_print_inside=True, crease_retry_mm=(1.0, 2.0),
+        thick_sheet_band=True,
         tuned_on="57 scans (booklet spreads, booklets too big for the bed, covers, prints), "
                  "26 thick-book spreads, 9 artboard pages with a thin page stack and 33 test scans "
                  "(artboard pages, covers, thick-book spreads), Oct 2026"),

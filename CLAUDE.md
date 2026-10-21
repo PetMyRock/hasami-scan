@@ -304,6 +304,21 @@ the truth is the ramp's foot, the edge refinement takes its steepest part: cut -
 (app). The cut part is the card's dim edge, no print. Following the ramp out to the lid would act on every item on
 the black bed, and the sharp-edged ones (0024-0026, 0041, 0042) also tail off 0.3-0.4 mm past their truth. 0021's
 second print +0.91 is the real scenario only (a grey lid-shadow band beside it); the app path is +0.38.
+0.5.21: `thick_sheet_band` (`thickbook._top_sheet_edge` / `_band_step`). The owner's test scans 0036-0039 (hasami-data
+`benchmarks/newdata3`, truth per page: the owner now saves pages): KLK Vol.7 Key Art Collection lying close to the bed's
+edges; on the lower page (scanner frame) one sheet below the top page fans out as a plain band 1.8-3.5 mm wide beyond it.
+`fit_spread` takes the first 2 mm of plain paper from outside as the page: a band wider than that became the edge
+(0037 +2.6, 0038 +3.3 mm, all paths) and one about 2 mm wide put half the edge points on each line until the fit gave up
+("ragged", rms 0.92); the general booklet logic then took the lid's shadow bands for the book running off the bed on two
+sides, looked for the fold the wrong way and returned one box over the whole bed (0036, preview / app; the owner's
+screenshot). Now (1) a clean outer line in front of the stack moves in to the innermost step line (sheets <= 0.6 mm apart)
+behind a plain band 0.6-5 mm wide, when a line runs along >= 85% of the side and plain paper follows for 2 mm inside;
+(2) a ragged edge is refitted to its inner line only when its points form two clean parallel lines 0.6-5 mm apart and
+(1) finds the step at the inner one. A looser (2) (refit any ragged edge's inner half) answered on V600 0019's
+scattered booklet edge and moved its side +1.5 mm: an edge that is not two lines must keep failing the fit. Result:
+0036-0038 all sides within 0.46 mm on every path (0038's upper fold -0.66 on the preview, as before); V600 57, Thick
+books 26, KLK 9 (both turns), the other 33 test scans and synthetic identical box for box. Lines at preview resolution
+are faint (stack lines 1-3 L*, steps 2.5-5): the valley threshold is 1.5 L*.
 
 ## Per-scanner tuning
 Users ask for tuning on the Discord server (https://discord.gg/TAAV8B9WWg) and share scans (an empty bed and
@@ -312,7 +327,7 @@ stored with the scans in the private data repo; auto-crop is tuned until the
 scans pass (count right and IoU >= 0.95), checking the other tuned scanners
 do not get worse. Plan: per-scanner profiles picked from the driver's model
 name, with a drop-down to override. Tuned so far: Epson Perfection V600 (57
-scans + 26 thick-book spreads + 9 artboard pages + 33 test scans, all pass), Epson V39 (older scans).
+scans + 26 thick-book spreads + 9 artboard pages + 37 test scans, all pass), Epson V39 (older scans).
 
 ## Test scans (0.5.8, owner)
 Toolbar/Scan menu "Test scan" (Ctrl+T, `MainWindow.do_test_scan` -> `Session.run_test_scan`):
@@ -406,7 +421,7 @@ Data and benchmarks (all on the maintainer's machine):
 - Compare: `benchmarks/klk6/side_mm.py OUT/results.json` (signed mm per side), `side_diff.py OLD NEW`
   and `compare.py OLD NEW` (run with `PYTHONPATH=F:/HasamiData/benchmarks/klk6`). Judge sides in mm
   (within 0.5 / 1 mm), not only IoU >= 0.95; check the bare 200 dpi preview box too (the owner sees it).
-- Current V600 state (0.5.16): all 57 + 26 + 9 + 33 pass; test scans 85% of sides within 0.5 mm, all
+- Current V600 state (0.5.16; 0.5.21 added test scans 0036-0039, per page, all sides within 0.5 mm but one fold): all 57 + 26 + 9 + 37 pass; test scans 85% of sides within 0.5 mm, all
   within 1 mm. Known leftovers to beat: see the 0.5.10 and 0.5.11 notes in "Scanner profiles".
 
 ## Ideas not done yet
