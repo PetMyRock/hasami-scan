@@ -26,7 +26,7 @@ from __future__ import annotations
 
 import warnings
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 import cv2
 import numpy as np
@@ -801,6 +801,10 @@ def detect_booklet(image: np.ndarray, settings: AutoCropSettings | None = None,
     pages = reading_order(pages)
     if st.booklet_output == "spread" and len(pages) == 2:
         return [spread_box(pages)]
+    if st.fold_clear:
+        from .foldclear import clear_of_crease
+
+        pages = [clear_of_crease(image, p, dpi, st.margin_mm) for p in pages]
     if len(pages) == 2:
         pages = _page_order(pages, st)
     return pages
@@ -1034,6 +1038,12 @@ def refine_booklet(image: np.ndarray, box: CropBox, st: AutoCropSettings, dpi: f
     """Re-find a booklet page's top-page edges on a (higher resolution) scan; the spine stays.  A
     spread box is redone page by page."""
     H, W = image.shape[:2]
+    if st.fold_clear or box.meta.get("fold_clear"):
+        # The fold side moved clear of the crease: refine from the crease, then move it again.
+        from .foldclear import clear_of_crease, undo
+
+        b = refine_booklet(image, undo(box, dpi), replace(st, fold_clear=False), dpi)
+        return clear_of_crease(image, b, dpi, st.margin_mm) if st.fold_clear and "spread_pages" not in b.meta else b
     if "spread_pages" in box.meta:
         pages = []
         for i, corners in enumerate(box.meta["spread_pages"]):

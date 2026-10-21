@@ -16,7 +16,7 @@ from typing import Callable
 import numpy as np
 
 from . import cases
-from .core import autocrop, profiles, sidelines
+from .core import autocrop, foldclear, profiles, sidelines
 from .core.geometry import SIDE_NAMES, CropBox, extract
 from .core.output import next_filenames, save_image, save_items, save_raw_items
 from .core.processing import process
@@ -160,6 +160,7 @@ class Session:
             try:
                 with profiles.use(self.profile()):
                     for b_px, b_mm in zip(found, found_mm):
+                        b_px = foldclear.undo(b_px, p.dpi)  # the fold where auto-crop found it
                         check = self._check_sides(b_px, sidelines.box_lines(p.image, b_px, p.dpi))
                         if check:
                             b_mm.meta["check_sides"] = check  # (before auto_mm copies the boxes: cases see it)
@@ -268,6 +269,7 @@ class Session:
                 final=[replace(b, meta=dict(b.meta)) for b in final_mm],
                 scanner_id=self.device_id, scanner_name=info.name if info else "", profile=self.profile().name,
                 crop={"mode": c.mode, "booklet_output": c.booklet_output, "booklet_rtl": c.booklet_rtl,
+                      "fold_clear": c.fold_clear,
                       "margin_mm": c.margin_mm, "edge_refine": c.edge_refine, "rotate": c.rotate})
             edits = cases.diff_boxes(self.last_case.auto, self.last_case.final)
             if c.mode != "off" and cases.corrected(edits):  # Off: drawing boxes is how it works

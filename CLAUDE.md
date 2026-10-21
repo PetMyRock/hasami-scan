@@ -326,6 +326,20 @@ fold would tilt the art and the paper edges 0.45 deg in the saved image. Near th
 in (up to ~2.5 mm over the last ~10 mm): the box keeps the straight part (a small lid wedge in the corner), as the
 truth does.
 
+## Fold clear of the crease (0.5.22, opt-in, owner)
+`crop.fold_clear` (Crop tab "Booklet: crop the fold side clear of the crease", CLI `--fold-clear`; booklet mode with
+"Each page on its own" only, off by default, all profiles). `hasami/core/foldclear.py`: per fold side (`keep_sides`),
+19 points along it: the darkest point within 2.5 mm, then inwards to half way back up to the page's paper (2.5-4 mm
+inside); a line through those points (the fold leans ~0.45 deg on the KLK Vol.7 Key Art Collection, boxes stay square
+to the paper edges) gives the innermost end; the side moves there + the crop margin, at most 2.5 mm, only when a crease
+>= 8 L darker runs along >= 75% of the side (and the points fit the line within 0.3 mm). The move is kept in
+`meta["fold_clear"]` (mm per side): `refine_booklet` undoes it, refines from the crease and measures again (thick pages
+too, on the scan; the profile stops where the crop-area scan ends); the check-this-side flags judge the fold before the
+move. Setting off: every real-scan group and synthetic identical box for box. Setting on (moves vs off, mm): test scans
+0036-0039 1.15-1.6 (both pages, every path), Thick books 0.4-1.9, V600 booklets 0.3-2.3 (half of the fold sides have a
+clear crease), KLK 0.7-1.5, other test scans 0.5-1.6. It cuts the crease's shading off every page with one, so it is for
+books whose crease the owner wants left out, not the default (truth keeps the crease line).
+
 ## Per-scanner tuning
 Users ask for tuning on the Discord server (https://discord.gg/TAAV8B9WWg) and share scans (an empty bed and
 real items). Truth is marked by eye at full resolution (5 points per side),
