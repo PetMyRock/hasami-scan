@@ -319,6 +319,12 @@ scattered booklet edge and moved its side +1.5 mm: an edge that is not two lines
 0036-0038 all sides within 0.46 mm on every path (0038's upper fold -0.66 on the preview, as before); V600 57, Thick
 books 26, KLK 9 (both turns), the other 33 test scans and synthetic identical box for box. Lines at preview resolution
 are faint (stack lines 1-3 L*, steps 2.5-5): the valley threshold is 1.5 L*.
+Looked at and kept (owner, Oct 21 2026): thick-book page boxes stay square to the paper edges (head, tail, stack
+side), not to the fold. On the KLK Vol.7 Key Art Collection the fold runs ~0.4-0.45 deg against each page (a V towards
+the spine, 1.3-1.5 mm over 192 mm), so the fold side is off the crease by up to ~1.4 mm at one end; squaring to the
+fold would tilt the art and the paper edges 0.45 deg in the saved image. Near the fold the head / tail edges also curl
+in (up to ~2.5 mm over the last ~10 mm): the box keeps the straight part (a small lid wedge in the corner), as the
+truth does.
 
 ## Per-scanner tuning
 Users ask for tuning on the Discord server (https://discord.gg/TAAV8B9WWg) and share scans (an empty bed and
