@@ -107,6 +107,11 @@ TABS: list[tuple[str, list[Field]]] = [
               tip="Booklet mode with both pages as separate images: which page is crop 1 (saved first). "
                   "Tick for books read right to left (Japanese booklets).  Left and right as "
                   "seen in the preview."),
+        Field("crop", "fold_clear", "Booklet: crop the fold side clear of the crease",
+              enabled_if=lambda st: st.crop.mode == "booklet" and st.crop.booklet_output == "pages",
+              tip="Booklet mode with both pages as separate images: end each page just before the dark "
+                  "crease at the fold instead of on its middle line (for books with a wide dark crease).  "
+                  "Only where a clear crease runs along the fold; at most 2.5 mm."),
         Field("crop", "profile", "Scanner profile", PROFILE_CHOICES,
               tip="Auto-crop is tuned for each scanner model (its lid, light and edges).  Automatic "
                   "picks the profile of the scanner in use; scanners without their own profile use "

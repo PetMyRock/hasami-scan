@@ -32,6 +32,8 @@ def _add_common(p: argparse.ArgumentParser) -> None:
                    help="booklet mode with the whole spread on the glass: each page (default) or one image")
     g.add_argument("--booklet-rtl", action="store_true",
                    help="booklet mode, two pages: right page first (books read right to left)")
+    g.add_argument("--fold-clear", action="store_true",
+                   help="booklet mode, two pages: crop each page's fold side clear of the dark crease")
     g.add_argument("--profile", help="scanner profile (tuned numbers per scanner model): auto (from the "
                         "scanner), default, epson-v600, ...")
     g.add_argument("--sensitivity", type=float, help="0..1, higher finds fainter items")
@@ -74,6 +76,8 @@ def _apply(args, st: AppSettings) -> AppSettings:
             setattr(c, attr, val)
     if args.booklet_rtl:
         c.booklet_rtl = True
+    if args.fold_clear:
+        c.fold_clear = True
     if args.no_deskew:
         c.deskew = False
     if args.rotate is not None:

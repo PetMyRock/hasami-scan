@@ -90,6 +90,9 @@ class AutoCropSettings:
     #: (as seen in the preview) 1 instead of the left (books read right to
     #: left, e.g. Japanese booklets).
     booklet_rtl: bool = False
+    #: Booklet mode, both pages as separate images: crop each page's fold side clear of the fold's dark
+    #: crease (in to its page-side edge) instead of on the crease's centre line; see ``foldclear``.
+    fold_clear: bool = False
 
 
 @dataclass
