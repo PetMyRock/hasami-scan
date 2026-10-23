@@ -248,7 +248,10 @@ def backends() -> list[Backend]:
     from .twain_backend import TwainBackend
     from .wia_backend import WiaBackend
 
-    return [SaneBackend(), TwainBackend(), WiaBackend(), EsclBackend(), DemoBackend(), FileBackend()]
+    from .private import private_backends
+
+    return [SaneBackend(), TwainBackend(), WiaBackend(), EsclBackend(), DemoBackend(), FileBackend(),
+            *private_backends()]
 
 
 def get_backend(name: str) -> Backend:

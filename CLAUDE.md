@@ -84,6 +84,12 @@ also work. Licence MIT (GPL-3.0 until 0.5.2). Python package `hasami`, distribut
 - `hasami/demo.py`, `demo_anime.py`: synthetic generators with ground truth.
 - `packaging/`: Windows installer (see Installer). `.github/workflows/installer.yml`.
 
+## Private backends (0.5.23)
+`hasami/devices/private.py`: every package in `<settings dir>/private/<name>/` with a `backend.py` that defines
+`backend()` is imported by path (works in the installed app) and joins `base.backends()` after the built-in ones;
+a package that fails to load is skipped with a log line. Private backends rank after TWAIN in `choose.py` (group 1).
+Nothing private lives in this repo: such packages are installed separately (e.g. from the private data repo).
+
 ## TWAIN (Windows)
 - `twain_helper.py` is a standalone script (stdlib + `pytwain==2.3.0`), one JSON
   request per run, one JSON line back. Many drivers are 32-bit only (e.g. the
